@@ -11,19 +11,19 @@ alt + shift + o         : komorebic reload-configuration
 alt + q                 : komorebic close
 
 # Focus windows
-ctrl + left             : komorebic focus left
-ctrl + down             : komorebic focus down
-ctrl + up               : komorebic focus up
-ctrl + right            : komorebic focus right
-ctrl + shift + oem_4    : komorebic cycle-focus previous # oem_4 is [
-ctrl + shift + oem_6    : komorebic cycle-focus next # oem_6 is ]
+alt + left             : komorebic focus left
+alt + down             : komorebic focus down
+alt + up               : komorebic focus up
+alt + right            : komorebic focus right
+alt + shift + oem_4    : komorebic cycle-focus previous # oem_4 is [
+alt + shift + oem_6    : komorebic cycle-focus next # oem_6 is ]
 
 # Move windows
-ctrl + shift + left     : komorebic move left
-ctrl + shift + down     : komorebic move down
-ctrl + shift + up       : komorebic move up
-ctrl + shift + right    : komorebic move right
-ctrl + shift + return   : komorebic promote
+alt + shift + left     : komorebic move left
+alt + shift + down     : komorebic move down
+alt + shift + up       : komorebic move up
+alt + shift + right    : komorebic move right
+alt + shift + return   : komorebic promote
 
 # Stack windows
 alt + left              : komorebic stack left
@@ -41,16 +41,16 @@ alt + shift + oem_plus  : komorebic resize-axis vertical increase
 alt + shift + oem_minus : komorebic resize-axis vertical decrease
 
 # Manipulate windows
-ctrl + shift + t        : komorebic toggle-float
-ctrl + shift + f        : komorebic toggle-monocle
+alt + shift + t        : komorebic toggle-float
+alt + shift + f        : komorebic toggle-monocle
 
 # Window manager options
 alt + shift + r         : komorebic retile
 #alt + shift + p        : komorebic toggle-pause
 
 # Layouts
-ctrl + shift + x        : komorebic flip-layout horizontal
-ctrl + shift + y        : komorebic flip-layout vertical
+alt + shift + x        : komorebic flip-layout horizontal
+alt + shift + y        : komorebic flip-layout vertical
 
 # Workspaces
 alt + 1                 : komorebic focus-workspace 0
