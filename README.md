@@ -26,7 +26,9 @@ A Windows 11 Dotfiles Repo infused with <a href="https://catppuccin.com/">Catppu
 
 > [!IMPORTANT]
 > The below **screenshots** are taken on my main monitor, which has the **resolution of 3440x1440**.
-> Configurations in this repository seem to work seamlessly on my **1920x1080** monitors as well.
+> Configurations in this repository are compatible with wide screen monitors and have been tested on sizes ranging from **1920x1080** to **3440x1440**, but should work for any monitor size.
+> 
+> **Note:** The glassit VSCode extension was present in the original repository but has been removed from this fork as it did not work properly with my setup.
 
 <br>
 
@@ -43,12 +45,10 @@ A Windows 11 Dotfiles Repo infused with <a href="https://catppuccin.com/">Catppu
 
 ## ⚠️ Disclaimer
 
-Since I work with this repository everyday to maintain ***latest updates*** for my Windows machine, many apps or packages will be **add** / **remove** / **reconfigure** to fit my personal taste.
+> [!NOTE]
+> **This is a fork** of the original [windots](https://github.com/jacquindev/windots) repository by [@jacquindev](https://github.com/jacquindev). This fork has been customized for personal use and may differ from the original repository.
 
-So, please keep in mind that:
-
-- **This repository is under very active development.**
-- You might expect bugs and breaking changes.
+This repository contains configurations and dotfiles that have been adapted to fit personal preferences. Some apps or packages may have been **added** / **removed** / **reconfigured** from the original setup.
 
 <br>
 
@@ -110,6 +110,9 @@ cd `your_location`
 >
 > <b><i><ins>VSCode Extensions:</ins></i></b><br/>
 > Edit the **[VSCode's extensions list](./extensions.list)** to **ADD/REMOVE** the extensions you would like to install.
+>
+> <b><i><ins>PowerShell Profile:</ins></i></b><br/>
+> The `Profile.ps1` is symbolically linked to this repository. Be sure to overwrite the `Profile.ps1` if you do not want its settings and configuration, as these settings are specifically tailored for my workflow.
 
 <br>
 
@@ -198,31 +201,10 @@ Follow the below links to download and learn to how to setup:
 <details>
 <summary><b>🎸 Spicetify Setup 🎧</b></summary>
 <br>
-<div align="left">
-<table>
-<tr>
-<th>Addons</th>
-<th>Name</th>
-</tr>
-<tr>
-<td>Extensions</td>
-<td>
-  <a href="https://github.com/surfbryce/beautiful-lyrics">Beautiful Lyrics</a>&nbsp;
-  <a href="https://github.com/spicetify/cli">Bookmark</a>&nbsp;
-  <a href="https://github.com/huhridge/huh-spicetify-extensions">Full App Display</a>&nbsp;
-  <a href="https://github.com/spicetify/cli">Shuffle+</a>&nbsp;
-  <a href="https://github.com/spicetify/cli">Trash Bin</a>&nbsp;
-</td>
-</tr>
-<td>Themes</td>
-<td>
-  <a href="https://github.com/Comfy-Themes/Spicetify">Comfy Themes</a>&nbsp;
-  <a href="./config/config/spicetify/comfy.js">⚙️</a>
-</td>
-<tr>
-</tr>
-</table>
-</div>
+
+> [!NOTE]
+> I do not use Spicetify personally. For setup and configuration details, please refer to the [original repository](https://github.com/jacquindev/windots).
+
 </details>
 
 <br>

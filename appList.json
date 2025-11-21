@@ -43,6 +43,7 @@
 				// Editors
 				{ "packageId": "JetBrains.IntelliJIDEA.Community" },
 				{ "packageId": "Microsoft.VisualStudioCode" },
+				{ "packageId": "Cursor.Cursor" },
 				{ "packageId": "Notepad++.Notepad++" },
 				{ "packageId": "Obsidian.Obsidian" },
 				{ "packageId": "LoftLabs.DevPod" }, // Client-Only Codespaces
