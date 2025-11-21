@@ -57,6 +57,7 @@ if ($debug_Override) {
     $debug = $debug_Override
 } else {
     $debug = $false
+<<<<<<< HEAD
 }
 
 # Define the path to the file that stores the last execution time
@@ -135,8 +136,101 @@ if (Get-Command fastfetch -ErrorAction SilentlyContinue) {
     if (-not [Environment]::GetCommandLineArgs().Contains("-NonInteractive")) {
         fastfetch
     }
+||||||| 3cb5ab2
+# 🧩 FastFetch
+# -----------------------------------------------------------------------------------------
+if (Get-Command fastfetch -ErrorAction SilentlyContinue) {
+    if ([Environment]::GetCommandLineArgs().Contains("-NonInteractive")) {
+        Return
+    }
+    fastfetch
+=======
+>>>>>>> refs/remotes/origin/main
 }
 
+<<<<<<< HEAD
+||||||| 3cb5ab2
+# 🦊 VFox (SDKs Version Manager)
+=======
+# Define the path to the file that stores the last execution time
+if ($repo_root_Override) {
+    # If variable $repo_root_Override is defined in profile.ps1 file
+    # then use it instead
+    $repo_root = $repo_root_Override
+} else {
+    $repo_root = "https://raw.githubusercontent.com/ChrisTitusTech"
+}
+
+# Define the path to the file that stores the last execution time
+if ($timeFilePath_Override) {
+    # If variable $timeFilePath_Override is defined in profile.ps1 file
+    # then use it instead
+    $timeFilePath = $timeFilePath_Override
+} else {
+    $timeFilePath = "$env:USERPROFILE\Documents\PowerShell\LastExecutionTime.txt"
+}
+
+# Define the update interval in days, set to -1 to always check
+if ($updateInterval_Override) {
+    # If variable $updateInterval_Override is defined in profile.ps1 file
+    # then use it instead
+    $updateInterval = $updateInterval_Override
+} else {
+    $updateInterval = 7
+}
+
+function Debug-Message {
+    # If function "Debug-Message_Override" is defined in profile.ps1 file
+    # then call it instead.
+    if (Get-Command -Name "Debug-Message_Override" -ErrorAction SilentlyContinue) {
+        Debug-Message_Override
+    } else {
+        Write-Host "#######################################" -ForegroundColor Red
+        Write-Host "#           Debug mode enabled        #" -ForegroundColor Red
+        Write-Host "#          ONLY FOR DEVELOPMENT       #" -ForegroundColor Red
+        Write-Host "#                                     #" -ForegroundColor Red
+        Write-Host "#       IF YOU ARE NOT DEVELOPING     #" -ForegroundColor Red
+        Write-Host "#       JUST RUN \`Update-Profile\`     #" -ForegroundColor Red
+        Write-Host "#        to discard all changes       #" -ForegroundColor Red
+        Write-Host "#   and update to the latest profile  #" -ForegroundColor Red
+        Write-Host "#               version               #" -ForegroundColor Red
+        Write-Host "#######################################" -ForegroundColor Red
+    }
+}
+
+if ($debug) {
+    Debug-Message
+}
+
+
+#opt-out of telemetry before doing anything, only if PowerShell is run as admin
+if ([bool]([System.Security.Principal.WindowsIdentity]::GetCurrent()).IsSystem) {
+    [System.Environment]::SetEnvironmentVariable('POWERSHELL_TELEMETRY_OPTOUT', 'true', [System.EnvironmentVariableTarget]::Machine)
+}
+
+# Initial GitHub.com connectivity check with 1 second timeout
+$global:canConnectToGitHub = Test-Connection github.com -Count 1 -Quiet -TimeoutSeconds 1
+
+# 🌏 Environment Variables (Windots Enhancement)
+# -----------------------------------------------------------------------------------------
+# DOTFILES and DOTPOSH are set by Setup.ps1 as system environment variables
+# Load them into the current session if they exist
+if ([System.Environment]::GetEnvironmentVariable("DOTFILES", "User")) {
+    $Env:DOTFILES = [System.Environment]::GetEnvironmentVariable("DOTFILES", "User")
+}
+if ([System.Environment]::GetEnvironmentVariable("DOTPOSH", "User")) {
+    $Env:DOTPOSH = [System.Environment]::GetEnvironmentVariable("DOTPOSH", "User")
+}
+
+# 🧩 FastFetch (Windots Enhancement)
+# -----------------------------------------------------------------------------------------
+if (Get-Command fastfetch -ErrorAction SilentlyContinue) {
+    if (-not [Environment]::GetCommandLineArgs().Contains("-NonInteractive")) {
+        fastfetch
+    }
+}
+
+>>>>>>> refs/remotes/origin/main
 # 🦊 VFox (SDKs Version Manager) (Windots Enhancement)
 # -----------------------------------------------------------------------------------------
 #if (Get-Command vfox -ErrorAction SilentlyContinue) {
@@ -154,6 +248,164 @@ if (Test-Path($ChocolateyProfile)) {
     Import-Module "$ChocolateyProfile"
 }
 
+<<<<<<< HEAD
+||||||| 3cb5ab2
+# ⏳ Asynchronous Processes (Boost PowerShell performance)
+# -----------------------------------------------------------------------------------------
+# Original idea is from: https://matt.kotsenas.com/posts/pwsh-profiling-async-startup
+function prompt {
+    # oh-my-posh will override this prompt, however because we're loading it async we want to communicate that the
+    # real prompt is still loading.
+    # "[async]:: $($executionContext.SessionState.Path.CurrentLocation) :: $(Get-Date -Format "HH:mm tt") $('❯' * ($nestedPromptLevel + 1)) "
+
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = [Security.Principal.WindowsPrincipal] $identity
+    $adminRole = [Security.Principal.WindowsBuiltInRole]::Administrator
+
+    $prefix = "[async]::"
+    if ($principal.IsInRole($adminRole)) { $prefix = "[async][admin]::" }
+
+    $body = 'PS ' + $PWD.path
+    $suffix = $(if ($NestedPromptLevel -ge 1) { '❯❯ ' }) + '❯ '
+    $time = $(Get-Date -Format "HH:mm tt")
+
+    "${prefix}${body} ${time} ${suffix}"
+}
+
+# Load modules asynchronously to reduce shell startup time
+[System.Collections.Queue]$__initQueue = @(
+    {
+        if (Get-Command oh-my-posh -ErrorAction SilentlyContinue) {
+            oh-my-posh init pwsh --config "$Env:DOTPOSH\posh-zen.toml" | Invoke-Expression
+            $Env:POSH_GIT_ENABLED = $true
+        }
+    },
+    {
+        # posh-git
+        if (Get-Module -ListAvailable -Name posh-git -ErrorAction SilentlyContinue) {
+            Set-Alias -Name 'g' -Value 'git' -Scope Global -Force
+            Import-Module posh-git -Global
+        }
+
+        # lazygit alias
+        if (Get-Command lazygit -ErrorAction SilentlyContinue) {
+            Set-Alias -Name 'lg' -Value 'lazygit' -Scope Global -Force
+        }
+    },
+    {
+        # git-aliases
+        if (Get-Module -ListAvailable -Name git-aliases -ErrorAction SilentlyContinue) {
+            Import-Module git-aliases -Global -DisableNameChecking
+        }
+    },
+    {
+        # GitHub CLI
+        if (Get-Command gh -ErrorAction SilentlyContinue) {
+            # gh completion
+            Invoke-Expression -Command $(gh completion -s powershell | Out-String)
+        }
+    },
+    {
+        # Fast scoop search drop-in replacement 🚀
+        if (Get-Command scoop -ErrorAction SilentlyContinue) {
+            if ((scoop info scoop-search).Installed) {
+                New-Module -Name scoop-search -ScriptBlock { Invoke-Expression (&scoop-search --hook) } | Import-Module -Global
+            }
+            if ((scoop info scoop-completion).Installed) {
+                Import-Module scoop-completion -Global
+            }
+        }
+    },
+    {
+        # chocolatey: `refreshenv`
+        if (Get-Command choco -ErrorAction SilentlyContinue) {
+            Import-Module $env:ChocolateyInstall\helpers\chocolateyProfile.psm1 -Global
+        }
+    },
+    {
+        # gsudo module
+        if (Get-Command gsudo -ErrorAction SilentlyContinue) {
+            $gsudoPath = Split-Path (Get-Command gsudo.exe).Path
+            Import-Module "$gsudoPath\gsudoModule.psd1" -Global
+        }
+    },
+    {
+        if (Get-InstalledModule -Name "powershell-yaml" -ErrorAction SilentlyContinue) {
+            Import-Module -Name powershell-yaml -Global
+        }
+    },
+    {
+        if (Get-InstalledModule -Name "Microsoft.PowerShell.SecretManagement" -ErrorAction SilentlyContinue) {
+            Import-Module -Name Microsoft.PowerShell.SecretManagement -Global
+        }
+    },
+    {
+        if (Get-InstalledModule -Name "Microsoft.PowerShell.SecretStore" -ErrorAction SilentlyContinue) {
+            Import-Module -Name Microsoft.PowerShell.SecretStore -Global
+        }
+    },
+    {
+        if (Get-InstalledModule -Name "Terminal-Icons" -ErrorAction SilentlyContinue) {
+            Import-Module -Name Terminal-Icons -Global
+        }
+    },
+    {
+        # Set default editor
+        if (Get-Command code -ErrorAction SilentlyContinue) { $Env:EDITOR = "code" }
+        else {
+            if (Get-Command nvim -ErrorAction SilentlyContinue) { $Env:EDITOR = "nvim" }
+            elseif (Get-Command vim -ErrorAction SilentlyContinue) { $Env:EDITOR = "vim" }
+            else { $Env:EDITOR = "notepad" }
+        }
+    },
+    {
+        # Python encoding
+        if (Get-Command python -ErrorAction SilentlyContinue) {
+            $Env:PYTHONIOENCODING = "utf-8"
+        }
+    },
+    {
+        # Pipenv settings
+        if (Get-Command pipenv -ErrorAction SilentlyContinue) {
+            $Env:PIPENV_VENV_IN_PROJECT = $true
+            $Env:PIPENV_NO_INHERIT = $true
+            $Env:PIPENV_IGNORE_VIRTUALENVS = $true
+        }
+    },
+    {
+        # yazi
+        if (Get-Command yazi -ErrorAction SilentlyContinue) {
+            New-Module -ScriptBlock {
+                function y {
+                    $tmp = [System.IO.Path]::GetTempFileName()
+                    yazi $args --cwd-file="$tmp"
+                    if (-not [String]::IsNullOrEmpty($cwd) -and $cwd -ne $PWD.Path) {
+                        Set-Location -LiteralPath $cwd
+                    }
+                    Remove-Item -Path $tmp
+                }
+            } | Import-Module -Global
+        }
+    },
+    {
+        # zoxide
+        if (Get-Command zoxide -ErrorAction SilentlyContinue) {
+            $Env:_ZO_DATA_DIR = "$Env:DOTFILES"
+            Invoke-Expression (& { (zoxide init powershell --cmd cd | Out-String) })
+        }
+=======
+# Import Modules and External Profiles
+# Ensure Terminal-Icons module is installed before importing
+if (-not (Get-Module -ListAvailable -Name Terminal-Icons)) {
+    Install-Module -Name Terminal-Icons -Scope CurrentUser -Force -SkipPublisherCheck
+}
+Import-Module -Name Terminal-Icons
+$ChocolateyProfile = "$env:ChocolateyInstall\helpers\chocolateyProfile.psm1"
+if (Test-Path($ChocolateyProfile)) {
+    Import-Module "$ChocolateyProfile"
+}
+
+>>>>>>> refs/remotes/origin/main
 # 🎲 DOTPOSH Configuration + Custom Modules + Completion (Windots Enhancement)
 # -----------------------------------------------------------------------------------------
 if ($Env:DOTPOSH -and (Test-Path $Env:DOTPOSH)) {
