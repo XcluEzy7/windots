@@ -602,16 +602,6 @@ if ($chocoInstall -eq $True) {
 		Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
 	}
 
-	# Since we install VMWare Application(s) with `chocolatey`, print the help message
-	# to the console if VMWare Installer notify that it cannot locate 'vmnetbridge.dll'
-	# file in order to complete the installation. There are several reasons this could
-	# happen, but for the sake of this script, we will just inform the simplest option
-	# in the majority of cases.
-	if ($chocoPkgs.packageName -match "vmware*") {
-		Write-ColorText "`n{Yellow}IMPORTANT NOTES: `n----------------`n`n{DarkGray}about VMWARE APPLICATION(s) installation`n`n{Gray}While installing VMWare Application, it is possible that a dialog box would appear`nand notify that the file 'vmnetbridge.dll' cannot be found by VMWare Installer. It`nmight prompt you to specify that path of the folder where 'vmnetbridge.dll' file is.`nIf that is the case, try to find the VMWare Application folder and provide the full`npath to it. `n`nFor example, if you are trying to install 'VMWare Workstation', then the path to its`nfolder could be (depending on your machine):`n`n	{Magenta}C:\Program Files (x86)\VMware\VMware Workstation`n{Gray}or`n	{Magenta}C:\Program Files\VMWare\VMWare Workstation `n`n{Gray}Rare case is that if you cannot find the file 'vmnetbridge.dll' in the installation`nfolder, then you could try to install the file from one of the following links,`nextract the zip file and tell VMWare Installer the path to that folder:`n`n	{Blue}https://windll.com/dll/vmware-inc/vmnetbridge`n{Gray}or`n	{Blue}https://www.dll-files.com/vmnetbridge.dll.html`n`n{Yellow}----------------`n"
-		Start-Sleep 3
-	}
-
 	foreach ($pkg in $chocoPkgs) {
 		$chocoPkg = $pkg.packageName
 		$chocoVer = $pkg.packageVersion

@@ -46,8 +46,6 @@
 
 				// Productivity
 				{ "packageId": "Microsoft.PowerToys" },
-				{ "packageId": "9NRX63209R7B", "packageSource": "msstore" }, // Outlook for Windows
-				{ "packageId": "9NHT9RB2F4HD", "packageSource": "msstore" }, // Microsoft Copilot
 
 				// Containerization / Virtualization
 				// { "packageId": "Docker.DockerDesktop" },
@@ -75,8 +73,7 @@
 				// add "packageVersion" field to install a specific version of a package, e.g.:
 				// { "packageName": "virtualbox", "packageVersion": "7.1.4" }
 				{ "packageName": "choco-cleaner" },
-				{ "packageName": "gpg4win" },
-				{ "packageName": "vmwareworkstation" }
+				{ "packageName": "gpg4win" }
 			],
 			"additionalArgs": ["-y", "-r", "--no-progress"]
 		},

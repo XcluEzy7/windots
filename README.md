@@ -237,7 +237,7 @@ Follow the below links to download and learn to how to setup:
 - 🌸 All-In-One VSCode setup (**_[extensions list](./extensions.list)_**)
 - ⚙️ [Rainmeter](./windows/rainmeter/) setup
 - \>\_ Sleek [Windows Terminal config](./config/AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json)
-- 🌈 Oh-My-Posh [minimal theme](./dotposh/posh-zen.toml) (with Spotify status if playing)
+- 🌈 Oh-My-Posh [minimal theme](./dotposh/posh-zen.toml)
 - 🦄 **Super fast** PowerShell startup time _(load asynchronously)_ + [custom configurations & modules](./dotposh/)
 - 🍄 Simple fastfetch configuration, which I copied from [scottmckendry's config](https://github.com/scottmckendry/Windots/tree/main/fastfetch)
 - 🥂 Many [addons](#git-addons) for Git!
@@ -280,10 +280,18 @@ Follow the below links to download and learn to how to setup:
 <br>
 <summary><b>🖱️ GUI Apps</b></summary>
 
-| Entry            | App                                            |
-| ---------------- | ---------------------------------------------- |
-| **App Launcher** | [Flow Launcher](https://www.flowlauncher.com/) |
-| **Music Player** | [Spotify](https://open.spotify.com/)           |
+| Entry | App |
+| ----- | --- |
+| **App Launcher** | [PowerToys Run](https://learn.microsoft.com/en-us/windows/powertoys/run) (PowerToys) |
+| **Git Clients** | [GitHub Desktop](https://desktop.github.com/), [GitKraken](https://www.gitkraken.com/) |
+| **IDEs** | [IntelliJ IDEA Community](https://www.jetbrains.com/idea/), [Visual Studio Code](https://code.visualstudio.com/) |
+| **Text Editors** | [Notepad++](https://notepad-plus-plus.org/), [Obsidian](https://obsidian.md/) |
+| **Development** | [DevPod](https://devpod.sh/) (Client-Only Codespaces), [Postman](https://www.postman.com/) |
+| **Containerization** | [Podman Desktop](https://podman-desktop.io/), [VirtualBox](https://www.virtualbox.org/) |
+| **Security** | [Kleopatra](https://www.gpg4win.org/about.html) (GPG Key Manager) |
+| **System Tools** | [PowerToys](https://github.com/microsoft/PowerToys), [Start11](https://www.stardock.com/products/start11/) |
+| **Networking** | [ProtonVPN](https://protonvpn.com/), [Synergy](https://symless.com/synergy) |
+| **Customization** | [Rainmeter](https://www.rainmeter.net/), [Lively Wallpaper](https://www.rocksdanister.com/lively/) |
 
 </details>
 
