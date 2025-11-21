@@ -21,7 +21,7 @@
 
 				// Must-haves
 				{ "packageId": "Microsoft.PowerShell" },
-				// { "packageId": "Microsoft.WindowsTerminal" },
+				{ "packageId": "sharex.sharex" },
 				{ "packageId": "Microsoft.WindowsTerminal.Preview" },
 
 				// Shell supports
@@ -32,10 +32,13 @@
 				// Main Python package
 				{ "packageId": "Python.Python.3.13" },
 
+				// Database
+				{ "packageId": "PostgreSQL.PostgreSQL" },
+
 				// Development Tools
 				{ "packageId": "ImageMagick.ImageMagick" },
 				{ "packageId": "Postman.Postman" },
-				{ "packageId": "9NTRNFT9ZWS2" }, // LocalStack Desktop
+				//{ "packageId": "9NTRNFT9ZWS2" }, // LocalStack Desktop
 
 				// Editors
 				{ "packageId": "JetBrains.IntelliJIDEA.Community" },
@@ -52,9 +55,10 @@
 				{ "packageId": "RedHat.Podman-Desktop" },
 				{ "packageId": "Oracle.VirtualBox" },
 				{ "packageId": "Hashicorp.Vagrant" },
+				{ "packageId": "Canonical.MicroK8s" },
 
 				// Paid services
-				{ "packageId": "Symless.Synergy" },
+				//{ "packageId": "Symless.Synergy" },
 				{ "packageId": "Proton.ProtonVPN" },
 				{ "packageId": "Stardock.Start11" },
 
@@ -132,11 +136,17 @@
 				// Development tools management (e.g: NodeJS, Java,...)
 				{ "packageName": "mise" },
 				// { "packageName": "vfox" },
+				{ "packageName": "pnpm" },
+				{ "packageName": "uv" },
 
 				// CI/CD tools
-				{ "packageName": "aws" },
+				//{ "packageName": "aws" },
 				{ "packageName": "restic" },
 				{ "packageName": "task" },
+				{ "packageName": "trivy" },
+				{ "packageName": "kubectl" },
+				{ "packageName": "wrangler" },
+				{ "packageName": "opentofu" },
 
 				// Sysinternal Suites
 				{ "packageName": "process-explorer", "packageScope": "global" },

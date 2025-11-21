@@ -66,3 +66,30 @@ ms-python.python
 ms-python.vscode-pylance
 ms-vscode.vscode-typescript-next
 svelte.svelte-vscode
+# Package Managers
+pnpm.pnpm
+# Database Tools
+cweijan.vscode-postgresql-client2
+ms-ossdata.vscode-postgresql
+mtxr.sqltools
+mtxr.sqltools-driver-pg
+# Kubernetes & Container Tools
+ms-kubernetes-tools.vscode-kubernetes-tools
+ms-vscode-remote.remote-containers
+# Infrastructure as Code (OpenTofu/Terraform)
+hashicorp.terraform
+# API Testing
+humao.rest-client
+rangav.vscode-thunder-client
+# Security & DevSecOps
+aquasecurity.trivy-vscode-extension
+# Cloudflare
+cloudflare.cloudflare-workers
+# Capacitor (Mobile)
+ionic.ionic
+# Additional Python Tools
+ms-python.black-formatter
+ms-python.isort
+# Configuration Files
+tamasfe.even-better-toml
+redhat.vscode-yaml
