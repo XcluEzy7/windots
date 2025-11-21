@@ -319,8 +319,6 @@ Follow the below links to download and learn to how to setup:
 
 </details>
 
-
-
 <details open>
 <br>
 <summary><b>📝 Text Editor / Note Taking</b></summary>
