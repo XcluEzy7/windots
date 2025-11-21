@@ -7,7 +7,7 @@ bierner.markdown-emoji
 bierner.markdown-footnotes
 bierner.markdown-mermaid
 bierner.markdown-preview-github-styles
-bierner.markdown-yaml-preamble	
+bierner.markdown-yaml-preamble
 bradlc.vscode-tailwindcss
 catppuccin.catppuccin-vsc
 christian-kohler.npm-intellisense
@@ -55,7 +55,6 @@ pnp.polacode
 postman.postman-for-vscode
 redhat.vscode-xml
 redhat.vscode-yaml
-s-nlf-fh.glassit
 saeris.markdown-github-alerts
 steoates.autoimport
 stivo.tailwind-fold

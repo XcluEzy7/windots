@@ -41,9 +41,20 @@
 	Setup script for Windows 11 Machine.
 
 #>
-Param()
+Param(
+	[switch]$Force
+)
 
 $VerbosePreference = "SilentlyContinue"
+
+# Tracking variables for summary
+$script:setupSummary = @{
+	Created = @()
+	Updated = @()
+	Exists  = @()
+	Failed  = @()
+	Skipped = @()
+}
 
 ########################################################################################################################
 ###												  	HELPER FUNCTIONS												 ###
@@ -291,13 +302,124 @@ function New-SymbolicLinks {
 		[switch]$Recurse
 	)
 
+	if (!(Test-Path $Source)) {
+		Write-ColorText "{Yellow}[symlink] {Gray}Source path does not exist: $Source"
+		$script:setupSummary.Skipped += "Symlinks from $Source (source not found)"
+		return
+	}
+
 	Get-ChildItem $Source -Recurse:$Recurse | Where-Object { !$_.PSIsContainer } | ForEach-Object {
 		$destinationPath = $_.FullName -replace [regex]::Escape($Source), $Destination
-		if (!(Test-Path (Split-Path $destinationPath))) {
-			New-Item (Split-Path $destinationPath) -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
+		$destinationDir = Split-Path $destinationPath
+
+		# Create destination directory if it doesn't exist
+		if (!(Test-Path $destinationDir)) {
+			New-Item $destinationDir -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
 		}
-		New-Item -ItemType SymbolicLink -Path $destinationPath -Target $($_.FullName) -Force -ErrorAction SilentlyContinue | Out-Null
-		Write-ColorText "{Blue}[symlink] {Green}$($_.FullName) {Yellow}--> {Gray}$destinationPath"
+
+		# Check if destination already exists
+		if (Test-Path $destinationPath) {
+			$existingItem = Get-Item $destinationPath -ErrorAction SilentlyContinue
+			if ($existingItem.LinkType -eq 'SymbolicLink') {
+				# Already a symlink, check if it points to the right target
+				$targetPath = (Get-Item $destinationPath).Target
+				if ($targetPath -ne $_.FullName) {
+					# Wrong target, update it
+					Remove-Item $destinationPath -Force -ErrorAction SilentlyContinue
+					New-Item -ItemType SymbolicLink -Path $destinationPath -Target $($_.FullName) -Force -ErrorAction SilentlyContinue | Out-Null
+					$script:setupSummary.Updated += $destinationPath
+					Write-ColorText "{Blue}[symlink] {Yellow}(updated) {Green}$($_.FullName) {Yellow}--> {Gray}$destinationPath"
+				} else {
+					# Correct target, skip
+					$script:setupSummary.Exists += $destinationPath
+					Write-ColorText "{Blue}[symlink] {Yellow}(exists) {Gray}$destinationPath"
+				}
+			} else {
+				# Existing file/directory that's not a symlink - backup and replace
+				if ($Force) {
+					$backupPath = "$destinationPath.backup.$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+					Write-ColorText "{Yellow}[symlink] {Gray}Backing up existing file: $backupPath"
+					Copy-Item $destinationPath $backupPath -Force -ErrorAction SilentlyContinue
+					Remove-Item $destinationPath -Force -ErrorAction SilentlyContinue
+					New-Item -ItemType SymbolicLink -Path $destinationPath -Target $($_.FullName) -Force -ErrorAction SilentlyContinue | Out-Null
+					$script:setupSummary.Updated += $destinationPath
+					Write-ColorText "{Blue}[symlink] {Green}(created) {Green}$($_.FullName) {Yellow}--> {Gray}$destinationPath"
+				} else {
+					$script:setupSummary.Skipped += "$destinationPath (exists as regular file, use -Force to replace)"
+					Write-ColorText "{Yellow}[symlink] {Gray}Skipped $destinationPath (exists, use -Force to replace)"
+				}
+			}
+		} else {
+			# Destination doesn't exist, create symlink
+			New-Item -ItemType SymbolicLink -Path $destinationPath -Target $($_.FullName) -Force -ErrorAction SilentlyContinue | Out-Null
+			$script:setupSummary.Created += $destinationPath
+			Write-ColorText "{Blue}[symlink] {Green}(created) {Green}$($_.FullName) {Yellow}--> {Gray}$destinationPath"
+		}
+	}
+}
+
+function Copy-ConfigFiles {
+	param (
+		[string]$Source,
+		[string]$Destination,
+		[switch]$Recurse
+	)
+
+	if (!(Test-Path $Source)) {
+		Write-ColorText "{Yellow}[copy] {Gray}Source path does not exist: $Source"
+		$script:setupSummary.Skipped += "Copy from $Source (source not found)"
+		return
+	}
+
+	# Get all items (files and directories) from source
+	Get-ChildItem $Source -Recurse:$Recurse | ForEach-Object {
+		$destinationPath = $_.FullName -replace [regex]::Escape($Source), $Destination
+		$destinationDir = Split-Path $destinationPath
+
+		# Create destination directory if it doesn't exist
+		if (!(Test-Path $destinationDir)) {
+			New-Item $destinationDir -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
+		}
+
+		if ($_.PSIsContainer) {
+			# For directories, ensure they exist
+			if (!(Test-Path $destinationPath)) {
+				New-Item $destinationPath -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
+				$script:setupSummary.Created += "$destinationPath\"
+			} else {
+				$script:setupSummary.Exists += "$destinationPath\"
+			}
+		} else {
+			# For files, check if they need to be copied/updated
+			if (Test-Path $destinationPath) {
+				# Check if file content differs
+				$sourceHash = (Get-FileHash $_.FullName -ErrorAction SilentlyContinue).Hash
+				$destHash = (Get-FileHash $destinationPath -ErrorAction SilentlyContinue).Hash
+
+				if ($sourceHash -ne $destHash) {
+					# Files differ, backup and update
+					if ($Force) {
+						$backupPath = "$destinationPath.backup.$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+						Copy-Item $destinationPath $backupPath -Force -ErrorAction SilentlyContinue
+						Copy-Item $_.FullName $destinationPath -Force -ErrorAction SilentlyContinue
+						$script:setupSummary.Updated += $destinationPath
+						Write-ColorText "{Blue}[copy] {Yellow}(updated) {Green}$($_.FullName) {Yellow}--> {Gray}$destinationPath"
+					} else {
+						$script:setupSummary.Skipped += "$destinationPath (exists, use -Force to update)"
+						Write-ColorText "{Yellow}[copy] {Gray}Skipped $destinationPath (exists, use -Force to update)"
+					}
+				} else {
+					# Files are identical, skip
+					$script:setupSummary.Exists += $destinationPath
+					Write-ColorText "{Blue}[copy] {Yellow}(exists) {Gray}$destinationPath"
+				}
+			} else {
+				# Destination doesn't exist, copy file
+				Copy-Item $_.FullName $destinationPath -Force -ErrorAction SilentlyContinue
+				$script:setupSummary.Created += $destinationPath
+				Write-ColorText "{Blue}[copy] {Green}(created) {Green}$($_.FullName) {Yellow}--> {Gray}$destinationPath"
+			}
+		}
 	}
 }
 
@@ -378,7 +500,7 @@ if ($wingetInstall -eq $True) {
 	}
 
 	# Configure winget settings for BETTER PERFORMANCE
-	# Note that this will always overwrite existed winget settings file whenever you run this script
+	# Check if settings file exists and compare content before overwriting
 	$settingsPath = "$env:LOCALAPPDATA\Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\LocalState\settings.json"
 	$settingsJson = @'
 {
@@ -406,7 +528,44 @@ if ($wingetInstall -eq $True) {
 		}
 }
 '@
-	$settingsJson | Out-File $settingsPath -Encoding utf8
+	# Normalize JSON for comparison (remove comments and whitespace differences)
+	$normalizeJson = {
+		param($json)
+		# Remove single-line comments
+		$json = $json -replace '//.*', ''
+		# Remove multi-line comments (basic)
+		$json = $json -replace '/\*.*?\*/', ''
+		# Remove extra whitespace
+		$json = ($json -split "`n" | Where-Object { $_.Trim() -ne '' }) -join "`n"
+		return $json.Trim()
+	}
+
+	if ($Force -or !(Test-Path $settingsPath)) {
+		# Create directory if it doesn't exist
+		$settingsDir = Split-Path $settingsPath
+		if (!(Test-Path $settingsDir)) {
+			New-Item $settingsDir -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
+		}
+		$settingsJson | Out-File $settingsPath -Encoding utf8
+		$script:setupSummary.Created += "WinGet settings"
+		Write-ColorText "{Blue}[config] {Green}(created) {Gray}WinGet settings"
+	} else {
+		$existingContent = Get-Content $settingsPath -Raw -ErrorAction SilentlyContinue
+		$normalizedExisting = & $normalizeJson $existingContent
+		$normalizedNew = & $normalizeJson $settingsJson
+
+		if ($normalizedExisting -ne $normalizedNew) {
+			# Backup existing settings
+			$backupPath = "$settingsPath.backup.$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+			Copy-Item $settingsPath $backupPath -Force -ErrorAction SilentlyContinue
+			$settingsJson | Out-File $settingsPath -Encoding utf8
+			$script:setupSummary.Updated += "WinGet settings"
+			Write-ColorText "{Blue}[config] {Yellow}(updated) {Gray}WinGet settings {DarkGray}(backup: $backupPath)"
+		} else {
+			$script:setupSummary.Exists += "WinGet settings"
+			Write-ColorText "{Blue}[config] {Yellow}(exists) {Gray}WinGet settings"
+		}
+	}
 
 	# Download packages from WinGet
 	foreach ($pkg in $wingetPkgs) {
@@ -561,6 +720,32 @@ if ($moduleInstall -eq $True) {
 	Refresh ($i++)
 }
 
+# Install PowerShell modules required by Profile.ps1
+Write-ColorText "{Blue}[module] {Magenta}pwsh: {Gray}Installing profile-required modules..."
+$profileRequiredModules = @(
+	"BurntToast",
+	"Microsoft.PowerShell.SecretManagement",
+	"Microsoft.PowerShell.SecretStore",
+	"PSScriptTools",
+	"PSFzf",
+	"CompletionPredictor"
+)
+
+foreach ($module in $profileRequiredModules) {
+	if (!(Get-Module -ListAvailable -Name $module -ErrorAction SilentlyContinue)) {
+		try {
+			Install-Module -Name $module -Scope CurrentUser -Force -AllowClobber -SkipPublisherCheck -ErrorAction Stop
+			Write-ColorText "{Blue}[module] {Magenta}pwsh: {Green}(success) {Gray}$module"
+		} catch {
+			Write-ColorText "{Blue}[module] {Magenta}pwsh: {Red}(failed) {Gray}$module {DarkGray}Error: $_"
+			$script:setupSummary.Failed += "PowerShell Module: $module"
+		}
+	} else {
+		Write-ColorText "{Blue}[module] {Magenta}pwsh: {Yellow}(exists) {Gray}$module"
+	}
+}
+Refresh ($i++)
+
 # Enable powershell experimental features
 $feature = $json.powershell.psexperimentalfeature
 $featureEnable = $feature.enable
@@ -619,9 +804,87 @@ if (Get-Command gh -ErrorAction SilentlyContinue) {
 ####################################################################
 # symlinks
 Write-TitleBox -Title "Add symbolic links for dotfiles"
-New-SymbolicLinks -Source "$PSScriptRoot\config\home" -Destination "$env:USERPROFILE" -Recurse
-New-SymbolicLinks -Source "$PSScriptRoot\config\AppData" -Destination "$env:USERPROFILE\AppData" -Recurse
+
+# Create PowerShell profile directory if it doesn't exist
+$powershellProfilePath = $PROFILE.CurrentUserAllHosts
+$powershellProfileDir = Split-Path $powershellProfilePath
+if (!(Test-Path $powershellProfileDir)) {
+	New-Item $powershellProfileDir -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
+	Write-ColorText "{Blue}[directory] {Green}(created) {Gray}$powershellProfileDir"
+}
+
+# Create symlink for PowerShell Profile.ps1
+if (Test-Path "$PSScriptRoot\Profile.ps1") {
+	if (Test-Path $powershellProfilePath) {
+		$existingProfile = Get-Item $powershellProfilePath -ErrorAction SilentlyContinue
+		if ($existingProfile.LinkType -eq 'SymbolicLink') {
+			$targetPath = $existingProfile.Target
+			if ($targetPath -ne "$PSScriptRoot\Profile.ps1") {
+				# Wrong target, update it
+				Remove-Item $powershellProfilePath -Force -ErrorAction SilentlyContinue
+				New-Item -ItemType SymbolicLink -Path $powershellProfilePath -Target "$PSScriptRoot\Profile.ps1" -Force -ErrorAction SilentlyContinue | Out-Null
+				$script:setupSummary.Updated += "PowerShell Profile"
+				Write-ColorText "{Blue}[symlink] {Yellow}(updated) {Green}$PSScriptRoot\Profile.ps1 {Yellow}--> {Gray}$powershellProfilePath"
+			} else {
+				# Correct target, skip
+				$script:setupSummary.Exists += "PowerShell Profile"
+				Write-ColorText "{Blue}[symlink] {Yellow}(exists) {Gray}$powershellProfilePath"
+			}
+		} else {
+			# Backup existing profile
+			if ($Force) {
+				$backupPath = "$powershellProfilePath.backup.$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+				Write-ColorText "{Yellow}[symlink] {Gray}Backing up existing profile: $backupPath"
+				Copy-Item $powershellProfilePath $backupPath -Force -ErrorAction SilentlyContinue
+				Remove-Item $powershellProfilePath -Force -ErrorAction SilentlyContinue
+				New-Item -ItemType SymbolicLink -Path $powershellProfilePath -Target "$PSScriptRoot\Profile.ps1" -Force -ErrorAction SilentlyContinue | Out-Null
+				$script:setupSummary.Updated += "PowerShell Profile"
+				Write-ColorText "{Blue}[symlink] {Green}(created) {Green}$PSScriptRoot\Profile.ps1 {Yellow}--> {Gray}$powershellProfilePath"
+			} else {
+				$script:setupSummary.Skipped += "PowerShell Profile (exists as regular file, use -Force to replace)"
+				Write-ColorText "{Yellow}[symlink] {Gray}Skipped PowerShell Profile (exists, use -Force to replace)"
+			}
+		}
+	} else {
+		New-Item -ItemType SymbolicLink -Path $powershellProfilePath -Target "$PSScriptRoot\Profile.ps1" -Force -ErrorAction SilentlyContinue | Out-Null
+		$script:setupSummary.Created += "PowerShell Profile"
+		Write-ColorText "{Blue}[symlink] {Green}(created) {Green}$PSScriptRoot\Profile.ps1 {Yellow}--> {Gray}$powershellProfilePath"
+	}
+} else {
+	$script:setupSummary.Failed += "PowerShell Profile (source not found)"
+	Write-ColorText "{Red}[symlink] {Gray}Profile.ps1 not found at: $PSScriptRoot\Profile.ps1"
+}
+
+# Copy AppData folder contents (system directories work better with copies)
+Write-ColorText "{Blue}[copy] {Gray}Copying AppData configuration files..."
+Copy-ConfigFiles -Source "$PSScriptRoot\config\AppData" -Destination "$env:USERPROFILE\AppData" -Recurse
+
+# Copy home folder contents to user root profile (if any files exist)
+if (Test-Path "$PSScriptRoot\config\home" -PathType Container) {
+	$homeFiles = Get-ChildItem "$PSScriptRoot\config\home" -Recurse -File -ErrorAction SilentlyContinue
+	if ($homeFiles.Count -gt 0) {
+		Write-ColorText "{Blue}[copy] {Gray}Copying home folder files to user profile..."
+		Copy-ConfigFiles -Source "$PSScriptRoot\config\home" -Destination "$env:USERPROFILE" -Recurse
+	} else {
+		Write-ColorText "{Blue}[copy] {Yellow}(skipped) {Gray}Home folder is empty, nothing to copy"
+	}
+}
+
+# Create symlink for config directory (this works well as a symlink)
 New-SymbolicLinks -Source "$PSScriptRoot\config\config" -Destination "$env:USERPROFILE\.config" -Recurse
+
+# Copy windows folder contents to Pictures directory
+if (Test-Path "$PSScriptRoot\windows" -PathType Container) {
+	Write-ColorText "{Blue}[copy] {Gray}Copying windows folder contents to Pictures..."
+	$picturesPath = [Environment]::GetFolderPath("MyPictures")
+	if (Test-Path $picturesPath) {
+		Copy-ConfigFiles -Source "$PSScriptRoot\windows" -Destination $picturesPath -Recurse
+	} else {
+		Write-ColorText "{Yellow}[copy] {Gray}Pictures folder not found, skipping windows folder copy"
+		$script:setupSummary.Skipped += "Windows folder (Pictures directory not found)"
+	}
+}
+
 Refresh ($i++)
 
 # Set the right git name and email for the user after symlinking
@@ -634,6 +897,50 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
 ###													ENVIRONMENT VARIABLES											 ###
 ##########################################################################
 Write-TitleBox -Title "Set Environment Variables"
+
+# Set DOTFILES and DOTPOSH environment variables for windots
+$dotfilesValue = [System.Environment]::GetEnvironmentVariable("DOTFILES")
+if ($Force -or !$dotfilesValue) {
+	try {
+		[System.Environment]::SetEnvironmentVariable("DOTFILES", "$PSScriptRoot", "User")
+		if ($dotfilesValue) {
+			$script:setupSummary.Updated += "DOTFILES environment variable"
+			Write-ColorText "{Blue}[environment] {Yellow}(updated) {Magenta}DOTFILES {Yellow}--> {Gray}$PSScriptRoot"
+		} else {
+			$script:setupSummary.Created += "DOTFILES environment variable"
+			Write-ColorText "{Blue}[environment] {Green}(added) {Magenta}DOTFILES {Yellow}--> {Gray}$PSScriptRoot"
+		}
+	} catch {
+		$script:setupSummary.Failed += "DOTFILES environment variable"
+		Write-Error -ErrorAction Stop "An error occurred setting DOTFILES: $_"
+	}
+} else {
+	$script:setupSummary.Exists += "DOTFILES environment variable"
+	Write-ColorText "{Blue}[environment] {Yellow}(exists) {Magenta}DOTFILES {Yellow}--> {Gray}$dotfilesValue"
+}
+
+$dotposhValue = [System.Environment]::GetEnvironmentVariable("DOTPOSH")
+$dotposhPath = Join-Path -Path "$PSScriptRoot" -ChildPath "dotposh"
+if ($Force -or !$dotposhValue) {
+	try {
+		[System.Environment]::SetEnvironmentVariable("DOTPOSH", "$dotposhPath", "User")
+		if ($dotposhValue) {
+			$script:setupSummary.Updated += "DOTPOSH environment variable"
+			Write-ColorText "{Blue}[environment] {Yellow}(updated) {Magenta}DOTPOSH {Yellow}--> {Gray}$dotposhPath"
+		} else {
+			$script:setupSummary.Created += "DOTPOSH environment variable"
+			Write-ColorText "{Blue}[environment] {Green}(added) {Magenta}DOTPOSH {Yellow}--> {Gray}$dotposhPath"
+		}
+	} catch {
+		$script:setupSummary.Failed += "DOTPOSH environment variable"
+		Write-Error -ErrorAction Stop "An error occurred setting DOTPOSH: $_"
+	}
+} else {
+	$script:setupSummary.Exists += "DOTPOSH environment variable"
+	Write-ColorText "{Blue}[environment] {Yellow}(exists) {Magenta}DOTPOSH {Yellow}--> {Gray}$dotposhValue"
+}
+
+# Set environment variables from JSON config
 $envVars = $json.environmentVariable
 foreach ($env in $envVars) {
 	$envCommand = $env.commandName
@@ -899,9 +1206,63 @@ if (!(Get-Command wsl -CommandType Application -ErrorAction Ignore)) {
 ###													END SCRIPT														 ###
 ######################################################################
 Set-Location $currentLocation
-Start-Sleep -Seconds 5
 
-Write-Host "`n----------------------------------------------------------------------------------`n" -ForegroundColor DarkGray
+# Display Setup Summary
+Write-Host "`n" -NoNewline
+Write-TitleBox -Title "Setup Summary"
+
+$totalItems = $script:setupSummary.Created.Count + $script:setupSummary.Updated.Count + $script:setupSummary.Exists.Count + $script:setupSummary.Failed.Count + $script:setupSummary.Skipped.Count
+
+if ($script:setupSummary.Created.Count -gt 0) {
+	$createdCount = $script:setupSummary.Created.Count
+	Write-ColorText "{Green}✅ Created ($createdCount):"
+	$script:setupSummary.Created | ForEach-Object {
+		Write-ColorText "   {Gray}  • $_"
+	}
+	Write-Host ""
+}
+
+if ($script:setupSummary.Updated.Count -gt 0) {
+	$updatedCount = $script:setupSummary.Updated.Count
+	Write-ColorText "{Yellow}🔄 Updated ($updatedCount):"
+	$script:setupSummary.Updated | ForEach-Object {
+		Write-ColorText "   {Gray}  • $_"
+	}
+	Write-Host ""
+}
+
+if ($script:setupSummary.Exists.Count -gt 0) {
+	$existsCount = $script:setupSummary.Exists.Count
+	Write-ColorText "{Cyan}✓ Already Exists ($existsCount):"
+	$script:setupSummary.Exists | ForEach-Object {
+		Write-ColorText "   {Gray}  • $_"
+	}
+	Write-Host ""
+}
+
+if ($script:setupSummary.Skipped.Count -gt 0) {
+	$skippedCount = $script:setupSummary.Skipped.Count
+	Write-ColorText "{DarkGray}⏭️  Skipped ($skippedCount):"
+	$script:setupSummary.Skipped | ForEach-Object {
+		Write-ColorText "   {Gray}  • $_"
+	}
+	Write-Host ""
+}
+
+if ($script:setupSummary.Failed.Count -gt 0) {
+	$failedCount = $script:setupSummary.Failed.Count
+	Write-ColorText "{Red}❌ Failed ($failedCount):"
+	$script:setupSummary.Failed | ForEach-Object {
+		Write-ColorText "   {Gray}  • $_"
+	}
+	Write-Host ""
+}
+
+if ($totalItems -eq 0) {
+	Write-ColorText "{DarkGray}No items processed. This may indicate an issue with the setup."
+}
+
+Write-Host "----------------------------------------------------------------------------------" -ForegroundColor DarkGray
 Write-Host "┌────────────────────────────────────────────────────────────────────────────────┐" -ForegroundColor "Green"
 Write-Host "│                                                                                │" -ForegroundColor "Green"
 Write-Host "│        █████╗ ██╗     ██╗         ██████╗  ██████╗ ███╗   ██╗███████╗ ██╗      │" -ForegroundColor "Green"
@@ -916,3 +1277,10 @@ Write-Host "└─────────────────────�
 Write-ColorText "`n`n{Grey}For more information, please visit: {Blue}https://github.com/jacquindev/windots`n"
 Write-ColorText "🔆 {Gray}Submit an issue via: {Blue}https://github.com/jacquindev/windots/issues/new"
 Write-ColorText "🔆 {Gray}Contact me via email: {Cyan}jacquindev@outlook.com"
+
+if ($script:setupSummary.Skipped.Count -gt 0) {
+	Write-ColorText "`n{Yellow}💡 Tip: {Gray}Some items were skipped. Use {Cyan}-Force {Gray}parameter to replace existing files."
+	Write-ColorText "   {Gray}Example: {Cyan}. .\Setup.ps1 -Force"
+}
+
+Start-Sleep -Seconds 3

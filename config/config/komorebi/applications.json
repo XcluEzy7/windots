@@ -443,6 +443,27 @@
 			}
 		]
 	},
+	"Cursor": {
+		"ignore": [
+			{
+				"kind": "Title",
+				"id": "Cursor - Update",
+				"matching_strategy": "StartsWith"
+			},
+			{
+				"kind": "Title",
+				"id": "Settings",
+				"matching_strategy": "Equals"
+			}
+		],
+		"tray_and_multi_window": [
+			{
+				"kind": "Exe",
+				"id": "Cursor.exe",
+				"matching_strategy": "Equals"
+			}
+		]
+	},
 	"DS4Windows": {
 		"tray_and_multi_window": [
 			{
@@ -2595,6 +2616,20 @@
 		]
 	},
 	"Windows Explorer": {
+		"manage": [
+			{
+				"kind": "Class",
+				"id": "CabinetWClass",
+				"matching_strategy": "Equals"
+			}
+		],
+		"floating": [
+			{
+				"kind": "Class",
+				"id": "CabinetWClass",
+				"matching_strategy": "Equals"
+			}
+		],
 		"tray_and_multi_window": [
 			{
 				"kind": "Exe",
