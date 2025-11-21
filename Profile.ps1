@@ -11,10 +11,10 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 $debug = $false
 
 # Define the path to the file that stores the last execution time
-$timeFilePath = [Environment]::GetFolderPath("MyDocuments") + "\PowerShell\LastExecutionTime.txt"
+#$timeFilePath = [Environment]::GetFolderPath("MyDocuments") + "\PowerShell\LastExecutionTime.txt"
 
 # Define the update interval in days, set to -1 to always check
-$updateInterval = 7
+#$updateInterval = 7
 
 #################################################################################################################################
 ############                                                                                                         ############
@@ -50,7 +50,7 @@ $updateInterval = 7
 
 ### PowerShell Profile Refactor
 ### Version 1.04 - Refactored
-
+<#
 if ($debug_Override) {
     # If variable debug_Override is defined in profile.ps1 file
     # then use it instead
@@ -85,7 +85,7 @@ if ($updateInterval_Override) {
 } else {
     $updateInterval = 7
 }
-
+#>
 function Debug-Message {
     # If function "Debug-Message_Override" is defined in profile.ps1 file
     # then call it instead.
@@ -546,7 +546,7 @@ function lazyg {
     git push
 }
 
-function quick-commit {
+function Invoke-QuickCommit {
     # Quick one-shot git workflow: add all, commit with custom message, and push
     git aa
     if ($LASTEXITCODE -ne 0) {
@@ -568,7 +568,7 @@ function quick-commit {
 
     git push
 }
-Set-Alias -Name qc -Value quick-commit
+Set-Alias -Name qc -Value Invoke-QuickCommit
 
 # Quick Access to System Information
 function sysinfo { Get-ComputerInfo }
