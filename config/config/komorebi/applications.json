@@ -2686,6 +2686,11 @@
 				"kind": "Exe",
 				"id": "WindowsTerminal.exe",
 				"matching_strategy": "Equals"
+			},
+			{
+				"kind": "Exe",
+				"id": "wt.exe",
+				"matching_strategy": "EndsWith"
 			}
 		]
 	},
