@@ -1678,6 +1678,13 @@
 				"id": "PowerToys.AdvancedPaste.exe",
 				"matching_strategy": "Equals"
 			}
+		],
+		"floating": [
+			{
+				"kind": "Exe",
+				"id": "Microsoft.CmdPal.UI.exe",
+				"matching_strategy": "EndsWith"
+			}
 		]
 	},
 	"Prime95": {
