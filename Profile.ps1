@@ -146,11 +146,13 @@ if ($Env:DOTFILES -and (Test-Path "$Env:DOTFILES\Setup.ps1")) {
 
 # Always create the function (with fallback logic to find Setup.ps1 at runtime)
 # Store the path if found for performance, but function will search again if needed
+# Use global variable instead of script-scoped so it's accessible from global function
 if ($setupScriptPath) {
-    $script:W11dotSetupPath = $setupScriptPath
+    $global:W11dotSetupPath = $setupScriptPath
 }
 
-function W11dot-Setup {
+# Define function in Global scope so alias can resolve it
+function global:W11dot-Setup {
     param(
         [switch]$Force,
         [switch]$Packages,
@@ -166,21 +168,21 @@ function W11dot-Setup {
         [switch]$NerdFonts,
         [switch]$WSL
     )
-    # Try script-scoped variable first (set during profile load)
-    $scriptPath = $script:W11dotSetupPath
+    # Try global variable first (set during profile load)
+    $scriptPath = $global:W11dotSetupPath
     
     # If not found, search for Setup.ps1
     if (-not $scriptPath -or -not (Test-Path $scriptPath)) {
         if ($Env:DOTFILES -and (Test-Path "$Env:DOTFILES\Setup.ps1")) {
             $scriptPath = "$Env:DOTFILES\Setup.ps1"
-            $script:W11dotSetupPath = $scriptPath  # Cache it
+            $global:W11dotSetupPath = $scriptPath  # Cache it
         } elseif ([System.Environment]::GetEnvironmentVariable("DOTFILES", "User") -and (Test-Path "$([System.Environment]::GetEnvironmentVariable('DOTFILES', 'User'))\Setup.ps1")) {
             $scriptPath = "$([System.Environment]::GetEnvironmentVariable('DOTFILES', 'User'))\Setup.ps1"
             $Env:DOTFILES = [System.Environment]::GetEnvironmentVariable("DOTFILES", "User")
-            $script:W11dotSetupPath = $scriptPath  # Cache it
+            $global:W11dotSetupPath = $scriptPath  # Cache it
         } elseif (Get-Command Setup.ps1 -ErrorAction SilentlyContinue) {
             $scriptPath = (Get-Command Setup.ps1).Source
-            $script:W11dotSetupPath = $scriptPath  # Cache it
+            $global:W11dotSetupPath = $scriptPath  # Cache it
         } else {
             # Last resort: search common locations
             $commonPaths = @(
@@ -192,7 +194,7 @@ function W11dot-Setup {
             foreach ($path in $commonPaths) {
                 if (Test-Path "$path\Setup.ps1") {
                     $scriptPath = "$path\Setup.ps1"
-                    $script:W11dotSetupPath = $scriptPath  # Cache it
+                    $global:W11dotSetupPath = $scriptPath  # Cache it
                     break
                 }
             }
@@ -208,8 +210,105 @@ function W11dot-Setup {
 }
 
 # Remove old alias if it exists and create new one
+# Try to use the wrapper script first (more reliable than function)
+$wrapperScript = $null
+if ($Env:DOTFILES -and (Test-Path "$Env:DOTFILES\w11dot-setup.ps1")) {
+    $wrapperScript = "$Env:DOTFILES\w11dot-setup.ps1"
+} elseif ([System.Environment]::GetEnvironmentVariable("DOTFILES", "User") -and (Test-Path "$([System.Environment]::GetEnvironmentVariable('DOTFILES', 'User'))\w11dot-setup.ps1")) {
+    $wrapperScript = "$([System.Environment]::GetEnvironmentVariable('DOTFILES', 'User'))\w11dot-setup.ps1"
+} elseif (Get-Command w11dot-setup.ps1 -ErrorAction SilentlyContinue) {
+    $wrapperScript = (Get-Command w11dot-setup.ps1).Source
+} elseif ($setupScriptPath -and (Test-Path (Join-Path (Split-Path $setupScriptPath) "w11dot-setup.ps1"))) {
+    $wrapperScript = Join-Path (Split-Path $setupScriptPath) "w11dot-setup.ps1"
+}
+
+# Create function that calls wrapper script or falls back to Setup.ps1 directly
+# Store wrapper script path in global variable for function access
+$global:W11dotSetupWrapperPath = $wrapperScript
+
 Remove-Alias -Name w11dot-setup -ErrorAction SilentlyContinue -Force
-Set-Alias -Name w11dot-setup -Value W11dot-Setup -Scope Global -ErrorAction SilentlyContinue
+# Use internal function name to avoid circular reference
+function global:Invoke-W11dotSetup {
+    param(
+        [switch]$Force,
+        [switch]$Packages,
+        [switch]$PowerShell,
+        [switch]$Git,
+        [switch]$Symlinks,
+        [switch]$Environment,
+        [switch]$Addons,
+        [switch]$VSCode,
+        [switch]$Themes,
+        [switch]$Miscellaneous,
+        [switch]$Komorebi,
+        [switch]$NerdFonts,
+        [switch]$WSL
+    )
+    
+    # Find Setup.ps1 path
+    $setupPath = $null
+    if ($global:W11dotSetupWrapperPath -and (Test-Path $global:W11dotSetupWrapperPath)) {
+        $setupPath = $global:W11dotSetupWrapperPath
+    } elseif ($Env:DOTFILES -and (Test-Path "$Env:DOTFILES\Setup.ps1")) {
+        $setupPath = "$Env:DOTFILES\Setup.ps1"
+    } elseif (Get-Command Setup.ps1 -ErrorAction SilentlyContinue) {
+        $setupPath = (Get-Command Setup.ps1).Source
+    } elseif (Get-Command W11dot-Setup -ErrorAction SilentlyContinue) {
+        # Fallback to W11dot-Setup function (but it will need gsudo too)
+        Write-Warning "Using W11dot-Setup function. Note: Setup.ps1 requires admin privileges."
+        W11dot-Setup @PSBoundParameters
+        return
+    }
+    
+    if (-not $setupPath) {
+        Write-Error "Setup.ps1 not found. Please run Setup.ps1 first to configure your environment."
+        return
+    }
+    
+    # Check if gsudo is available
+    $gsudoAvailable = $false
+    if (Get-Command gsudo -ErrorAction SilentlyContinue) {
+        $gsudoAvailable = $true
+    } elseif (Get-Command gsudo.exe -ErrorAction SilentlyContinue) {
+        $gsudoAvailable = $true
+    }
+    
+    # Use gsudo to elevate privileges if available
+    if ($gsudoAvailable) {
+        Write-Host "Elevating privileges with gsudo (UAC prompt will appear)..." -ForegroundColor Cyan
+        # Use gsudo to run Setup.ps1 with admin privileges
+        # gsudo will prompt for UAC if needed
+        # Build parameter array for PowerShell
+        $psArgs = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $setupPath)
+        if ($Force) { $psArgs += "-Force" }
+        if ($Packages) { $psArgs += "-Packages" }
+        if ($PowerShell) { $psArgs += "-PowerShell" }
+        if ($Git) { $psArgs += "-Git" }
+        if ($Symlinks) { $psArgs += "-Symlinks" }
+        if ($Environment) { $psArgs += "-Environment" }
+        if ($Addons) { $psArgs += "-Addons" }
+        if ($VSCode) { $psArgs += "-VSCode" }
+        if ($Themes) { $psArgs += "-Themes" }
+        if ($Miscellaneous) { $psArgs += "-Miscellaneous" }
+        if ($Komorebi) { $psArgs += "-Komorebi" }
+        if ($NerdFonts) { $psArgs += "-NerdFonts" }
+        if ($WSL) { $psArgs += "-WSL" }
+        
+        # Use gsudo to run PowerShell with the script and parameters
+        # gsudo supports PowerShell script blocks or commands
+        $gsudoCmd = if (Get-Command gsudo -ErrorAction SilentlyContinue) { "gsudo" } else { "gsudo.exe" }
+        
+        # Run with gsudo - it will handle UAC prompt
+        & $gsudoCmd pwsh.exe @psArgs
+    } else {
+        # Fallback: try to run directly (will fail if admin is required)
+        Write-Warning "gsudo not found. Attempting to run Setup.ps1 directly (may require admin privileges)."
+        Write-Warning "Install gsudo with: winget install gerardog.gsudo"
+        & $setupPath @PSBoundParameters
+    }
+}
+# Create alias pointing to the internal function
+Set-Alias -Name w11dot-setup -Value Invoke-W11dotSetup -Scope Global -ErrorAction SilentlyContinue
 
 # Load completions for w11dot-setup
 $completionFile = $null
