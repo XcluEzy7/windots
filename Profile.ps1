@@ -336,6 +336,154 @@ function admin {
 # Set UNIX-like aliases for the admin command, so sudo <command> will run the command with elevated rights.
 Set-Alias -Name su -Value admin
 
+# 🔧 Sysinternals Aliases (Windots Enhancement)
+# -----------------------------------------------------------------------------------------
+# Helper function to find Sysinternals tools in common locations
+function Get-SysinternalsPath {
+    param([string]$ToolName)
+    
+    $commonPaths = @(
+        "$env:ProgramFiles\Sysinternals\$ToolName.exe",
+        "${env:ProgramFiles(x86)}\Sysinternals\$ToolName.exe",
+        "$env:USERPROFILE\Downloads\$ToolName.exe",
+        "$env:USERPROFILE\Desktop\$ToolName.exe",
+        "$env:LOCALAPPDATA\Microsoft\WindowsApps\$ToolName.exe"
+    )
+    
+    # Check if tool is in PATH
+    $pathTool = Get-Command $ToolName -ErrorAction SilentlyContinue
+    if ($pathTool) {
+        return $pathTool.Source
+    }
+    
+    # Check common locations
+    foreach ($path in $commonPaths) {
+        if (Test-Path $path) {
+            return $path
+        }
+    }
+    
+    return $null
+}
+
+# Create Sysinternals aliases if tools are found
+$sysinternalsTools = @{
+    'procexp'    = 'procexp.exe'      # Process Explorer
+    'procmon'    = 'procmon.exe'      # Process Monitor
+    'autoruns'   = 'autoruns.exe'     # Autoruns
+    'tcpview'    = 'tcpview.exe'      # TCPView
+    'sysmon'     = 'sysmon.exe'       # Sysmon
+    'handle'     = 'handle.exe'       # Handle
+    'psexec'     = 'psexec.exe'       # PsExec
+    'pslist'     = 'pslist.exe'       # PsList
+    'pskill'     = 'pskill.exe'       # PsKill
+    'psinfo'     = 'psinfo.exe'       # PsInfo
+    'psservice'  = 'psservice.exe'    # PsService
+    'psloggedon' = 'psloggedon.exe'   # PsLoggedOn
+    'vmmap'      = 'vmmap.exe'        # VMMap
+    'diskmon'    = 'diskmon.exe'      # DiskMon
+    'procrun'    = 'procrun.exe'      # ProcRun
+    'procdump'   = 'procdump.exe'     # ProcDump
+    'strings'    = 'strings.exe'      # Strings
+    'sigcheck'   = 'sigcheck.exe'     # Sigcheck
+    'accesschk'  = 'accesschk.exe'    # AccessChk
+    'accessenum' = 'accessenum.exe'  # AccessEnum
+    'bginfo'     = 'bginfo.exe'       # BGInfo
+    'clockres'   = 'clockres.exe'     # ClockRes
+    'contig'     = 'contig.exe'       # Contig
+    'coreinfo'   = 'coreinfo.exe'     # CoreInfo
+    'desktops'   = 'desktops.exe'     # Desktops
+    'diskview'   = 'diskview.exe'     # DiskView
+    'du'         = 'du.exe'           # Disk Usage
+    'efsdump'    = 'efsdump.exe'      # EfsDump
+    'findlinks'  = 'findlinks.exe'    # FindLinks
+    'logonsessions' = 'logonsessions.exe' # LogonSessions
+    'movefile'   = 'movefile.exe'     # MoveFile
+    'notmyfault' = 'notmyfault.exe'    # NotMyFault
+    'pendmoves'  = 'pendmoves.exe'    # PendMoves
+    'portmon'    = 'portmon.exe'      # PortMon
+    'procexp64'  = 'procexp64.exe'     # Process Explorer 64-bit
+    'procmon64'  = 'procmon64.exe'    # Process Monitor 64-bit
+    'psfile'     = 'psfile.exe'       # PsFile
+    'psgetsid'   = 'psgetsid.exe'     # PsGetSid
+    'psping'     = 'psping.exe'       # PsPing
+    'psshutdown' = 'psshutdown.exe'    # PsShutdown
+    'pssuspend'  = 'pssuspend.exe'    # PsSuspend
+    'rammap'     = 'rammap.exe'       # RAMMap
+    'regdelnull' = 'regdelnull.exe'   # RegDelNull
+    'ru'         = 'ru.exe'           # Registry Usage
+    'sdelete'    = 'sdelete.exe'      # SDelete
+    'shareenum'  = 'shareenum.exe'     # ShareEnum
+    'shellrunas' = 'shellrunas.exe'   # ShellRunAs
+    'streams'    = 'streams.exe'      # Streams
+    'sync'       = 'sync.exe'         # Sync
+    'tcpvcon'    = 'tcpvcon.exe'      # TCPView Console
+    'vmmap64'    = 'vmmap64.exe'      # VMMap 64-bit
+    'whois'      = 'whois.exe'        # Whois
+    'winobj'     = 'winobj.exe'       # WinObj
+    'zoomit'     = 'zoomit.exe'       # ZoomIt
+}
+
+# Store available Sysinternals aliases for tab completion
+$global:AvailableSysinternalsAliases = @()
+
+foreach ($alias in $sysinternalsTools.Keys) {
+    $toolPath = Get-SysinternalsPath -ToolName $sysinternalsTools[$alias]
+    if ($toolPath) {
+        Set-Alias -Name $alias -Value $toolPath -Scope Global -ErrorAction SilentlyContinue
+        $global:AvailableSysinternalsAliases += $alias
+    }
+}
+
+# Helper function to list available Sysinternals tools
+function Get-SysinternalsTools {
+    <#
+    .SYNOPSIS
+        Lists all available Sysinternals tools that are installed and have aliases configured.
+    .DESCRIPTION
+        Displays a formatted list of all Sysinternals tools that were found and have aliases created.
+        Use this to discover which Sysinternals tools are available on your system.
+    .EXAMPLE
+        Get-SysinternalsTools
+        Lists all available Sysinternals aliases
+    #>
+    if ($global:AvailableSysinternalsAliases.Count -eq 0) {
+        Write-Host "No Sysinternals tools found. Install Sysinternals Suite to enable aliases." -ForegroundColor Yellow
+        return
+    }
+    
+    Write-Host "Available Sysinternals Tools:" -ForegroundColor Cyan
+    Write-Host "==============================" -ForegroundColor Cyan
+    $global:AvailableSysinternalsAliases | Sort-Object | ForEach-Object {
+        $toolName = $sysinternalsTools[$_]
+        $description = switch ($_) {
+            'procexp'    { 'Process Explorer - Advanced task manager' }
+            'procmon'    { 'Process Monitor - Real-time file/registry/process monitor' }
+            'autoruns'   { 'Autoruns - Startup program manager' }
+            'tcpview'    { 'TCPView - Network connection viewer' }
+            'sysmon'     { 'Sysmon - System activity monitor' }
+            'handle'     { 'Handle - File handle viewer' }
+            'psexec'     { 'PsExec - Execute processes remotely' }
+            'pslist'     { 'PsList - Process list utility' }
+            'pskill'     { 'PsKill - Process killer' }
+            'psinfo'     { 'PsInfo - System information' }
+            'psservice'  { 'PsService - Service viewer/controller' }
+            'psloggedon' { 'PsLoggedOn - See who is logged on' }
+            'vmmap'      { 'VMMap - Virtual memory analyzer' }
+            'procdump'   { 'ProcDump - Process dump utility' }
+            'sigcheck'   { 'Sigcheck - File signature verifier' }
+            'accesschk'  { 'AccessChk - Access permissions checker' }
+            default      { "Sysinternals $toolName" }
+        }
+        Write-Host "  $_" -ForegroundColor Green -NoNewline
+        Write-Host " - $description" -ForegroundColor Gray
+    }
+    Write-Host ""
+    Write-Host "Tip: Use tab completion when typing these commands!" -ForegroundColor Yellow
+}
+Set-Alias -Name sysinternals -Value Get-SysinternalsTools
+Set-Alias -Name sysint -Value Get-SysinternalsTools
+
 function uptime {
     try {
         # find date/time format
@@ -667,6 +815,10 @@ $scriptblock = {
     }
 }
 Register-ArgumentCompleter -Native -CommandName dotnet -ScriptBlock $scriptblock
+
+# Note: Sysinternals aliases automatically support tab completion via PowerShell's built-in
+# alias completion. Type part of an alias name and press Tab to complete it.
+# Use 'Get-SysinternalsTools' or 'sysinternals' to list all available tools.
 
 if (Get-Command -Name "Get-Theme_Override" -ErrorAction SilentlyContinue) {
     Get-Theme_Override
