@@ -15,10 +15,10 @@ A Windows 11 Dotfiles Repo infused with <a href="https://catppuccin.com/">Catppu
 
 <div align="center">
 <p>
-  <a href="https://github.com/jacquindev/commits/main"><img alt="Last Commit" src="https://img.shields.io/github/last-commit/jacquindev/windots?style=for-the-badge&logo=github&logoColor=EBA0AC&label=Last%20Commit&labelColor=302D41&color=EBA0AC"></a>&nbsp;&nbsp;
-  <a href="https://github.com/jacquindev/windots/"><img src="https://img.shields.io/github/repo-size/jacquindev/windots?style=for-the-badge&logo=hyprland&logoColor=F9E2AF&label=Size&labelColor=302D41&color=F9E2AF" alt="REPO SIZE"></a>&nbsp;&nbsp;
-  <a href="https://github.com/jacquindev/windots/LICENSE"><img src="https://img.shields.io/github/license/jacquindev/windots?style=for-the-badge&logo=&color=CBA6F7&logoColor=CBA6F7&labelColor=302D41" alt="LICENSE"></a>&nbsp;&nbsp;
-  <a href="https://github.com/jacquindev/windots/stargazers"><img alt="Stargazers" src="https://img.shields.io/github/stars/jacquindev/windots?style=for-the-badge&logo=starship&color=B7BDF8&logoColor=B7BDF8&labelColor=302D41"></a>&nbsp;&nbsp;
+  <a href="https://github.com/XcluEzy7/windots/commits/main"><img alt="Last Commit" src="https://img.shields.io/github/last-commit/XcluEzy7/windots?style=for-the-badge&logo=github&logoColor=EBA0AC&label=Last%20Commit&labelColor=302D41&color=EBA0AC"></a>&nbsp;&nbsp;
+  <a href="https://github.com/XcluEzy7/windots/"><img src="https://img.shields.io/github/repo-size/XcluEzy7/windots?style=for-the-badge&logo=hyprland&logoColor=F9E2AF&label=Size&labelColor=302D41&color=F9E2AF" alt="REPO SIZE"></a>&nbsp;&nbsp;
+  <a href="https://github.com/XcluEzy7/windots/blob/main/LICENSE"><img src="https://img.shields.io/github/license/XcluEzy7/windots?style=for-the-badge&logo=&color=CBA6F7&logoColor=CBA6F7&labelColor=302D41" alt="LICENSE"></a>&nbsp;&nbsp;
+  <a href="https://github.com/XcluEzy7/windots/stargazers"><img alt="Stargazers" src="https://img.shields.io/github/stars/XcluEzy7/windots?style=for-the-badge&logo=starship&color=B7BDF8&logoColor=B7BDF8&labelColor=302D41"></a>&nbsp;&nbsp;
 </p>
 </div>
 
@@ -47,6 +47,10 @@ A Windows 11 Dotfiles Repo infused with <a href="https://catppuccin.com/">Catppu
 
 > [!NOTE]
 > **This is a fork** of the original [windots](https://github.com/jacquindev/windots) repository by [@jacquindev](https://github.com/jacquindev). This fork has been customized for personal use and may differ from the original repository.
+> 
+> - **Original Repository**: Created by [@jacquindev](https://github.com/jacquindev) (Jacquin Moon) - [View Original Repo](https://github.com/jacquindev/windots)
+> - **Original Author's Last Contribution** (to original repo): ~7 months ago (approximately May 2025)
+> - **Fork Maintained By**: [@XcluEzy7](https://github.com/XcluEzy7) (Erik Garcia) - Independent changes began November 21, 2025
 
 This repository contains configurations and dotfiles that have been adapted to fit personal preferences. Some apps or packages may have been **added** / **removed** / **reconfigured** from the original setup.
 
@@ -93,7 +97,7 @@ This repository contains configurations and dotfiles that have been adapted to f
 - Simply clone this repo to `your_location`
 
 ```bash
-git clone https://github.com/jacquindev/windots.git your_location
+git clone https://github.com/XcluEzy7/windots.git your_location
 cd `your_location`
 ```
 
@@ -396,15 +400,27 @@ Big thanks for those inspirations:
 
 <h2 id="author">👤 Author</h2>
 
+### Original Author
+
 - Name: **Jacquin Moon**
 - Github: [@jacquindev](https://github.com/jacquindev)
 - Email: jacquindev@outlook.com
+- **Original Repository**: [jacquindev/windots](https://github.com/jacquindev/windots)
+- **Last Contribution** (to original repo): ~7 months ago (approximately May 2025)
+
+### Current Maintainer
+
+- Name: **Erik Garcia**
+- Github: [@XcluEzy7](https://github.com/XcluEzy7)
+- Email: eagarcia@techforexcellence.org
+- **Fork Repository**: [XcluEzy7/windots](https://github.com/XcluEzy7/windots)
+- **Independent Changes Began**: November 21, 2025
 
 <br>
 
 <h2 id="license">📜 License</h2>
 
-This repository is released under the [MIT License](https://github.com/jacquindev/windots/blob/main/LICENSE).
+This repository is released under the [MIT License](https://github.com/XcluEzy7/windots/blob/main/LICENSE).
 
 Feel free to use and modify these dotfiles to suit your needs.
 

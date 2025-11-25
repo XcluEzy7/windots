@@ -1,21 +1,21 @@
 
 <#PSScriptInfo
 
-.VERSION 1.1.0
+.VERSION 1.3.2
 
 .GUID ccb5be4c-ea07-4c45-a5b4-6310df24e2bc
 
-.AUTHOR jacquindev@outlook.com
+.AUTHOR eagarcia@techforexcellence.org
 
 .COMPANYNAME
 
-.COPYRIGHT 2024 Jacquin Moon. All rights reserved.
+.COPYRIGHT 2025 Jacquin Moon. All rights reserved. (Original Author: jacquindev@outlook.com)
 
 .TAGS windots dotfiles
 
-.LICENSEURI https://github.com/jacquindev/windots/blob/main/LICENSE
+.LICENSEURI https://github.com/XcluEzy7/windots/blob/main/LICENSE
 
-.PROJECTURI https://github.com/jacquindev/windots
+.PROJECTURI https://github.com/XcluEzy7/windots
 
 .ICONURI
 
@@ -26,7 +26,12 @@
 .EXTERNALSCRIPTDEPENDENCIES
 
 .RELEASENOTES
-
+Version 1.3.2 - Updated by XcluEzy7
+- Enhanced selective installation features
+- Improved environment variable expansion
+- Added global access and tab completion
+- Automatic privilege escalation with gsudo
+- Original script by Jacquin Moon (jacquindev@outlook.com)
 
 .PRIVATEDATA
 
