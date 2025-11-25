@@ -110,12 +110,14 @@ cd `your_location`
 <h4>🔧 Selective Installation & Reinstallation <small><i>(v0.02)</i></small></h4>
 <h4>🌍 Dynamic Environment Variable Expansion <small><i>(v0.03)</i></small></h4>
 <h4>🚀 Global Access & Tab Completion <small><i>(v0.04)</i></small></h4>
-<h4>🔐 Automatic Privilege Escalation with gsudo <small><i>(v0.05)</i></small></h4>
+<h4>⚡ Selective Section Execution & Always-Available Global Command <small><i>(v0.05)</i></small></h4>
 
 After the initial setup, `Setup.ps1` is automatically added to your PATH, allowing you to run it from anywhere in your terminal. The script also includes:
 - **Function wrapper**: Call `w11dot-setup` from anywhere (e.g., `w11dot-setup -Environment -Force`)
 - **Tab completion**: Press Tab after `w11dot-setup -` to see all available parameters with descriptions
 - **Case-insensitive parameters**: `-Environment`, `-environment`, and `-ENVIRONMENT` all work the same
+- **Always available**: Once the initial setup completes, the `w11dot-setup` command and `Setup.ps1` script are permanently available from any directory, allowing you to run specific installation sections whenever needed
+- **Selective execution**: Run individual sections of the installer independently (e.g., `w11dot-setup -Packages`, `w11dot-setup -Git`) without running the full installation process
 - **Automatic privilege escalation**: When running `w11dot-setup` commands, the function automatically uses `gsudo` to elevate privileges. A UAC prompt will appear - simply click "Yes" and the script will run with admin privileges. No need to manually open an elevated terminal!
 
 Environment variables in `appList.json` now automatically expand to user-specific paths. No need to manually edit hardcoded paths - use placeholders like `%USERPROFILE%` or `%ProgramFiles%` and they will be automatically resolved to the correct paths for each user during setup.
