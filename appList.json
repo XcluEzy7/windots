@@ -207,20 +207,21 @@
 			"moduleList": [
 				// add "moduleVersion" field if you want to install a specific version of module, e.g.:
 				// { "moduleName": "DockerCompletion", "moduleVersion": "1.2300.0.230804" }
-				{ "moduleName": "BurntToast" },
-				{ "moduleName": "CompletionPredictor" },
-				{ "moduleName": "DockerCompletion" },
-				{ "moduleName": "DotNetVersionLister" },
-				{ "moduleName": "Microsoft.PowerShell.SecretManagement" },
-				{ "moduleName": "Microsoft.PowerShell.SecretStore" },
-				{ "moduleName": "npm-completion" },
-				{ "moduleName": "posh-git" },
-				{ "moduleName": "powershell-yaml" },
-				{ "moduleName": "PSFzf" },
-				{ "moduleName": "PSParseHTML" },
-				{ "moduleName": "PSScriptAnalyzer" },
-				{ "moduleName": "PSScriptTools" },
-				{ "moduleName": "PSToml" },
+				// Commented out due to installation failures (NuGet provider issue):
+				// { "moduleName": "BurntToast" },
+				// { "moduleName": "CompletionPredictor" },
+				// { "moduleName": "DockerCompletion" },
+				// { "moduleName": "DotNetVersionLister" },
+				// { "moduleName": "Microsoft.PowerShell.SecretManagement" },
+				// { "moduleName": "Microsoft.PowerShell.SecretStore" },
+				// { "moduleName": "npm-completion" },
+				// { "moduleName": "posh-git" },
+				// { "moduleName": "powershell-yaml" },
+				// { "moduleName": "PSFzf" },
+				// { "moduleName": "PSParseHTML" },
+				// { "moduleName": "PSScriptAnalyzer" },
+				// { "moduleName": "PSScriptTools" },
+				// { "moduleName": "PSToml" },
 				{ "moduleName": "Terminal-Icons" }
 			],
 			"additionalArgs": ["-Scope", "CurrentUser", "-Force", "-AllowClobber"]

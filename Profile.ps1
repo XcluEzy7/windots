@@ -5,87 +5,9 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 # 🔆 Tls12
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-### PowerShell Profile Refactor
-### Version 1.03 - Refactored
-
 $debug = $false
 
-# Define the path to the file that stores the last execution time
-#$timeFilePath = [Environment]::GetFolderPath("MyDocuments") + "\PowerShell\LastExecutionTime.txt"
 
-# Define the update interval in days, set to -1 to always check
-#$updateInterval = 7
-
-#################################################################################################################################
-############                                                                                                         ############
-############                                          !!!   WARNING:   !!!                                           ############
-############                                                                                                         ############
-############                DO NOT MODIFY THIS FILE. THIS FILE IS HASHED AND UPDATED AUTOMATICALLY.                  ############
-############                    ANY CHANGES MADE TO THIS FILE WILL BE OVERWRITTEN BY COMMITS TO                      ############
-############                       https://github.com/ChrisTitusTech/powershell-profile.git.                         ############
-############                                                                                                         ############
-#!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!#
-############                                                                                                         ############
-############                      TO ADD YOUR OWN CODE OR IF YOU WANT TO OVERRIDE ANY OF THESE VARIABLES             ############
-############                      OR FUNCTIONS. USE THE Edit-Profile FUNCTION TO CREATE YOUR OWN profile.ps1 FILE.   ############
-############                      TO OVERRIDE IN YOUR NEW profile.ps1 FILE, REWRITE THE VARIABLE                     ############
-############                      OR FUNCTION, ADDING "_Override" TO THE NAME.                                       ############
-############                                                                                                         ############
-############                      THE FOLLOWING VARIABLES RESPECT _Override:                                         ############
-############                      $EDITOR_Override                                                                   ############
-############                      $debug_Override                                                                    ############
-############                      $repo_root_Override  [To point to a fork, for example]                             ############
-############                      $timeFilePath_Override                                                             ############
-############                      $updateInterval_Override                                                           ############
-############                                                                                                         ############
-############                      THE FOLLOWING FUNCTIONS RESPECT _Override:                                         ############
-############                      Debug-Message_Override                                                             ############
-############                      Update-Profile_Override                                                            ############
-############                      Update-PowerShell_Override                                                         ############
-############                      Clear-Cache_Override                                                               ############
-############                      Get-Theme_Override                                                                 ############
-############                      WinUtilDev_Override [To call a fork, for example]                                  ############
-############                      Set-PredictionSource                                                               ############
-#################################################################################################################################
-
-### PowerShell Profile Refactor
-### Version 1.04 - Refactored
-<#
-if ($debug_Override) {
-    # If variable debug_Override is defined in profile.ps1 file
-    # then use it instead
-    $debug = $debug_Override
-} else {
-    $debug = $false
-}
-
-# Define the path to the file that stores the last execution time
-if ($repo_root_Override) {
-    # If variable $repo_root_Override is defined in profile.ps1 file
-    # then use it instead
-    $repo_root = $repo_root_Override
-} else {
-    $repo_root = "https://raw.githubusercontent.com/ChrisTitusTech"
-}
-
-# Define the path to the file that stores the last execution time
-if ($timeFilePath_Override) {
-    # If variable $timeFilePath_Override is defined in profile.ps1 file
-    # then use it instead
-    $timeFilePath = $timeFilePath_Override
-} else {
-    $timeFilePath = "$env:USERPROFILE\Documents\PowerShell\LastExecutionTime.txt"
-}
-
-# Define the update interval in days, set to -1 to always check
-if ($updateInterval_Override) {
-    # If variable $updateInterval_Override is defined in profile.ps1 file
-    # then use it instead
-    $updateInterval = $updateInterval_Override
-} else {
-    $updateInterval = 7
-}
-#>
 function Debug-Message {
     # If function "Debug-Message_Override" is defined in profile.ps1 file
     # then call it instead.
@@ -157,12 +79,28 @@ if (Test-Path($ChocolateyProfile)) {
 # -----------------------------------------------------------------------------------------
 if ($Env:DOTPOSH -and (Test-Path $Env:DOTPOSH)) {
     # Load custom modules
+    # Exclude modules that require missing dependencies
+    $excludedModules = @(
+        "Get-IPAddress.psm1",      # Requires: BurntToast
+        "Get-OrCreateSecret.psm1"   # Requires: Microsoft.PowerShell.SecretManagement
+    )
     foreach ($module in $((Get-ChildItem -Path "$env:DOTPOSH\Modules\*" -Include *.psm1 -ErrorAction SilentlyContinue).FullName)) {
-        Import-Module "$module" -Global -ErrorAction SilentlyContinue
+        $moduleName = Split-Path $module -Leaf
+        if ($moduleName -notin $excludedModules) {
+            Import-Module "$module" -Global -ErrorAction SilentlyContinue
+        }
     }
     # Load config scripts
+    # Exclude scripts that require missing dependencies
+    $excludedScripts = @(
+        "posh-aliases.ps1",    # Requires: PSScriptTools
+        "posh-readline.ps1"    # Requires: PSFzf
+    )
     foreach ($file in $((Get-ChildItem -Path "$env:DOTPOSH\Config\*" -Include *.ps1 -ErrorAction SilentlyContinue).FullName)) {
-        . "$file" -ErrorAction SilentlyContinue
+        $scriptName = Split-Path $file -Leaf
+        if ($scriptName -notin $excludedScripts) {
+            . "$file" -ErrorAction SilentlyContinue
+        }
     }
     # Load completions
     if (Test-Path "$env:DOTPOSH\Config\powershell-completions-collection\exec.ps1" -PathType Leaf) {
@@ -173,26 +111,113 @@ if ($Env:DOTPOSH -and (Test-Path $Env:DOTPOSH)) {
 # 🔧 Setup.ps1 Wrapper Function (Windots Enhancement)
 # -----------------------------------------------------------------------------------------
 # Makes Setup.ps1 callable from anywhere and ensures completions work
+# Try multiple methods to find Setup.ps1
+$setupScriptPath = $null
+
+# Method 1: Use DOTFILES environment variable (session or user)
 if ($Env:DOTFILES -and (Test-Path "$Env:DOTFILES\Setup.ps1")) {
-    function W11dot-Setup {
-        param(
-            [switch]$Force,
-            [switch]$Packages,
-            [switch]$PowerShell,
-            [switch]$Git,
-            [switch]$Symlinks,
-            [switch]$Environment,
-            [switch]$Addons,
-            [switch]$VSCode,
-            [switch]$Themes,
-            [switch]$Miscellaneous,
-            [switch]$Komorebi,
-            [switch]$NerdFonts,
-            [switch]$WSL
-        )
-        & "$Env:DOTFILES\Setup.ps1" @PSBoundParameters
+    $setupScriptPath = "$Env:DOTFILES\Setup.ps1"
+} elseif ([System.Environment]::GetEnvironmentVariable("DOTFILES", "User") -and (Test-Path "$([System.Environment]::GetEnvironmentVariable('DOTFILES', 'User'))\Setup.ps1")) {
+    $dotfilesFromUser = [System.Environment]::GetEnvironmentVariable("DOTFILES", "User")
+    $Env:DOTFILES = $dotfilesFromUser
+    $setupScriptPath = "$dotfilesFromUser\Setup.ps1"
+} elseif (Get-Command Setup.ps1 -ErrorAction SilentlyContinue) {
+    # Method 2: Find Setup.ps1 in PATH
+    $setupScriptPath = (Get-Command Setup.ps1).Source
+} else {
+    # Method 3: Search common locations
+    $commonPaths = @(
+        "$env:USERPROFILE\.dotfiles",
+        "$env:USERPROFILE\dotfiles",
+        "$env:USERPROFILE\Documents\dotfiles",
+        "$env:USERPROFILE\Projects\windots"
+    )
+    foreach ($path in $commonPaths) {
+        if (Test-Path "$path\Setup.ps1") {
+            $setupScriptPath = "$path\Setup.ps1"
+            break
+        }
     }
-    Set-Alias -Name w11dot-setup -Value W11dot-Setup -ErrorAction SilentlyContinue
+}
+
+# Always create the function (with fallback logic to find Setup.ps1 at runtime)
+# Store the path if found for performance, but function will search again if needed
+if ($setupScriptPath) {
+    $script:W11dotSetupPath = $setupScriptPath
+}
+
+function W11dot-Setup {
+    param(
+        [switch]$Force,
+        [switch]$Packages,
+        [switch]$PowerShell,
+        [switch]$Git,
+        [switch]$Symlinks,
+        [switch]$Environment,
+        [switch]$Addons,
+        [switch]$VSCode,
+        [switch]$Themes,
+        [switch]$Miscellaneous,
+        [switch]$Komorebi,
+        [switch]$NerdFonts,
+        [switch]$WSL
+    )
+    # Try script-scoped variable first (set during profile load)
+    $scriptPath = $script:W11dotSetupPath
+    
+    # If not found, search for Setup.ps1
+    if (-not $scriptPath -or -not (Test-Path $scriptPath)) {
+        if ($Env:DOTFILES -and (Test-Path "$Env:DOTFILES\Setup.ps1")) {
+            $scriptPath = "$Env:DOTFILES\Setup.ps1"
+            $script:W11dotSetupPath = $scriptPath  # Cache it
+        } elseif ([System.Environment]::GetEnvironmentVariable("DOTFILES", "User") -and (Test-Path "$([System.Environment]::GetEnvironmentVariable('DOTFILES', 'User'))\Setup.ps1")) {
+            $scriptPath = "$([System.Environment]::GetEnvironmentVariable('DOTFILES', 'User'))\Setup.ps1"
+            $Env:DOTFILES = [System.Environment]::GetEnvironmentVariable("DOTFILES", "User")
+            $script:W11dotSetupPath = $scriptPath  # Cache it
+        } elseif (Get-Command Setup.ps1 -ErrorAction SilentlyContinue) {
+            $scriptPath = (Get-Command Setup.ps1).Source
+            $script:W11dotSetupPath = $scriptPath  # Cache it
+        } else {
+            # Last resort: search common locations
+            $commonPaths = @(
+                "$env:USERPROFILE\.dotfiles",
+                "$env:USERPROFILE\dotfiles",
+                "$env:USERPROFILE\Documents\dotfiles",
+                "$env:USERPROFILE\Projects\windots"
+            )
+            foreach ($path in $commonPaths) {
+                if (Test-Path "$path\Setup.ps1") {
+                    $scriptPath = "$path\Setup.ps1"
+                    $script:W11dotSetupPath = $scriptPath  # Cache it
+                    break
+                }
+            }
+        }
+    }
+    
+    if ($scriptPath -and (Test-Path $scriptPath)) {
+        & $scriptPath @PSBoundParameters
+    } else {
+        Write-Error "Setup.ps1 not found. Please run Setup.ps1 first to configure your environment, or set the DOTFILES environment variable."
+        return
+    }
+}
+
+# Remove old alias if it exists and create new one
+Remove-Alias -Name w11dot-setup -ErrorAction SilentlyContinue -Force
+Set-Alias -Name w11dot-setup -Value W11dot-Setup -Scope Global -ErrorAction SilentlyContinue
+
+# Load completions for w11dot-setup
+$completionFile = $null
+if ($Env:DOTPOSH -and (Test-Path "$Env:DOTPOSH\Config\powershell-completions-collection\completions\Setup.ps1")) {
+    $completionFile = "$Env:DOTPOSH\Config\powershell-completions-collection\completions\Setup.ps1"
+} elseif ($setupScriptPath -and (Test-Path (Join-Path (Split-Path $setupScriptPath) "dotposh\Config\powershell-completions-collection\completions\Setup.ps1"))) {
+    $completionFile = Join-Path (Split-Path $setupScriptPath) "dotposh\Config\powershell-completions-collection\completions\Setup.ps1"
+} elseif ($Env:DOTFILES -and (Test-Path "$Env:DOTFILES\dotposh\Config\powershell-completions-collection\completions\Setup.ps1")) {
+    $completionFile = "$Env:DOTFILES\dotposh\Config\powershell-completions-collection\completions\Setup.ps1"
+}
+if ($completionFile) {
+    . $completionFile -ErrorAction SilentlyContinue
 }
 
 # Check for Profile Updates

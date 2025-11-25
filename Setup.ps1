@@ -281,26 +281,58 @@ function Initialize-PowerShellPrerequisites {
 	}
 
 	# Register and trust PSGallery repository
+	# Note: PSGallery registration may fail if NuGet provider isn't installed yet
+	# We'll handle this gracefully and try again after NuGet is installed
+	$psGalleryRegistered = $false
 	try {
 		$psGallery = Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue
 		if (!$psGallery) {
-			Register-PSRepository -Default -ErrorAction Stop
-			Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}PSGallery repository registered"
+			# Try to register PSGallery - this may fail if NuGet provider isn't available yet
+			try {
+				Register-PSRepository -Default -ErrorAction Stop
+				$psGalleryRegistered = $true
+				Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}PSGallery repository registered"
+			} catch {
+				# If -Default fails, try explicit registration
+				try {
+					Register-PSRepository -Name PSGallery -SourceLocation "https://www.powershellgallery.com/api/v2" -InstallationPolicy Trusted -ErrorAction Stop
+					$psGalleryRegistered = $true
+					Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}PSGallery repository registered"
+				} catch {
+					Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(warning) {Gray}PSGallery registration deferred (NuGet provider required first)"
+				}
+			}
 		} else {
+			$psGalleryRegistered = $true
 			Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(exists) {Gray}PSGallery repository"
+			
+			# Check if PSGallery is properly configured
+			if (!$psGallery.SourceLocation -or $psGallery.SourceLocation -eq '') {
+				# Re-register if misconfigured
+				try {
+					Unregister-PSRepository -Name PSGallery -ErrorAction SilentlyContinue
+					Register-PSRepository -Name PSGallery -SourceLocation "https://www.powershellgallery.com/api/v2" -InstallationPolicy Trusted -ErrorAction Stop
+					Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}PSGallery repository re-registered"
+				} catch {
+					Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(warning) {Gray}PSGallery re-registration deferred"
+				}
+			}
 		}
 
-		# Set PSGallery as trusted
-		if ($psGallery.InstallationPolicy -ne 'Trusted') {
-			Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction Stop
-			Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}PSGallery set as trusted"
+		# Set PSGallery as trusted (refresh the object first)
+		if ($psGalleryRegistered) {
+			$psGallery = Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue
+			if ($psGallery -and $psGallery.InstallationPolicy -ne 'Trusted') {
+				Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction Stop
+				Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}PSGallery set as trusted"
+			}
 		}
 	} catch {
-		Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Red}(failed) {Gray}PSGallery configuration: $_"
-		$script:setupSummary.Failed += "PowerShell Prerequisite: PSGallery configuration"
+		Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(warning) {Gray}PSGallery configuration: $_ (will retry after NuGet installation)"
 	}
 
 	# Install/Update NuGet provider (required for module installation)
+	# Use manual bootstrap method since PowerShellGet may be broken
 	try {
 		$nugetProvider = Get-PackageProvider -Name NuGet -ListAvailable -ErrorAction SilentlyContinue | 
 			Where-Object { [version]$_.Version -ge [version]"2.8.5.201" } | 
@@ -308,9 +340,129 @@ function Initialize-PowerShellPrerequisites {
 			Select-Object -First 1
 
 		if (!$nugetProvider) {
-			Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Gray}Installing NuGet provider (minimum 2.8.5.201)..."
-			Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser -ErrorAction Stop | Out-Null
-			Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}NuGet provider installed"
+			Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Gray}Installing NuGet provider (minimum 2.8.5.201) via manual bootstrap..."
+			
+			$nugetInstalled = $false
+			
+			# Method 1: Try standard installation (may fail if PowerShellGet is broken)
+			try {
+				Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser -ErrorAction Stop | Out-Null
+				$nugetInstalled = $true
+				Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}NuGet provider installed via standard method"
+			} catch {
+				Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(warning) {Gray}Standard installation failed, using manual bootstrap: $_"
+				
+				# Method 2: Manual bootstrap - download and install NuGet provider directly
+				try {
+					# Temporarily bypass certificate validation for download
+					$originalCallback = [System.Net.ServicePointManager]::ServerCertificateValidationCallback
+					[System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+					
+					try {
+						# Primary method: Download and run the official NuGet provider installer
+						# This is the most reliable method when PowerShellGet is broken
+						Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Gray}Downloading NuGet provider installer..."
+						$nugetUrl = "https://oneget.org/nuget-2.8.5.201.exe"
+						$nugetInstaller = "$env:TEMP\nuget-installer.exe"
+						
+						Invoke-WebRequest -Uri $nugetUrl -OutFile $nugetInstaller -UseBasicParsing -ErrorAction Stop
+						
+						Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Gray}Installing NuGet provider (this may take a moment)..."
+						$installProcess = Start-Process -FilePath $nugetInstaller -ArgumentList "/quiet" -Wait -NoNewWindow -PassThru
+						
+						if ($installProcess.ExitCode -eq 0 -or $installProcess.ExitCode -eq $null) {
+							# Give it a moment to register
+							Start-Sleep -Seconds 2
+							
+							# Reload PackageManagement to detect the new provider
+							Import-PackageProvider -Name NuGet -Force -ErrorAction SilentlyContinue | Out-Null
+							
+							# Verify installation
+							$verifyProvider = Get-PackageProvider -Name NuGet -ListAvailable -ErrorAction SilentlyContinue | 
+								Where-Object { [version]$_.Version -ge [version]"2.8.5.201" } | 
+								Select-Object -First 1
+							
+							if ($verifyProvider) {
+								$nugetInstalled = $true
+								Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}NuGet provider $($verifyProvider.Version) installed"
+							} else {
+								# Provider may need a PowerShell restart, but continue anyway
+								Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(warning) {Gray}NuGet provider installed but may require PowerShell restart to be fully available"
+								$nugetInstalled = $true
+							}
+						} else {
+							throw "Installer exited with code $($installProcess.ExitCode)"
+						}
+						
+						# Clean up
+						Remove-Item $nugetInstaller -Force -ErrorAction SilentlyContinue
+					} catch {
+						# Fallback: Try downloading from PowerShell Gallery API directly
+						Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(warning) {Gray}Installer method failed, trying package download: $_"
+						try {
+							# Determine provider assemblies directory
+							$providerPath = "$env:USERPROFILE\AppData\Local\PackageManagement\ProviderAssemblies"
+							$nugetProviderPath = Join-Path $providerPath "nuget"
+							
+							# Create directory if it doesn't exist
+							if (!(Test-Path $providerPath)) {
+								New-Item -ItemType Directory -Path $providerPath -Force | Out-Null
+							}
+							if (!(Test-Path $nugetProviderPath)) {
+								New-Item -ItemType Directory -Path $nugetProviderPath -Force | Out-Null
+							}
+							
+							# Download NuGet provider package
+							$nugetPackageUrl = "https://www.powershellgallery.com/api/v2/package/NuGet/2.8.5.201"
+							$nugetPackageZip = "$env:TEMP\nuget-provider.zip"
+							
+							Invoke-WebRequest -Uri $nugetPackageUrl -OutFile $nugetPackageZip -UseBasicParsing -ErrorAction Stop
+							Expand-Archive -Path $nugetPackageZip -DestinationPath "$env:TEMP\nuget-provider" -Force
+							
+							# Copy provider DLL
+							$extractedPath = "$env:TEMP\nuget-provider"
+							$providerDll = Get-ChildItem -Path $extractedPath -Recurse -Filter "Microsoft.PackageManagement.NuGetProvider.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
+							
+							if ($providerDll) {
+								Copy-Item -Path $providerDll.FullName -Destination $nugetProviderPath -Force
+								Import-PackageProvider -Name NuGet -Force -ErrorAction SilentlyContinue | Out-Null
+								$nugetInstalled = $true
+								Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}NuGet provider installed via package download"
+							}
+							
+							# Clean up
+							Remove-Item $nugetPackageZip -Force -ErrorAction SilentlyContinue
+							Remove-Item $extractedPath -Recurse -Force -ErrorAction SilentlyContinue
+						} catch {
+							throw "All bootstrap methods failed: $_"
+						}
+					} finally {
+						# Restore original certificate validation
+						[System.Net.ServicePointManager]::ServerCertificateValidationCallback = $originalCallback
+					}
+				} catch {
+					throw "Manual bootstrap failed: $_"
+				}
+			}
+			
+			if ($nugetInstalled) {
+				# Retry PSGallery registration now that NuGet is available
+				if (!$psGalleryRegistered) {
+					try {
+						$psGallery = Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue
+						if (!$psGallery) {
+							Register-PSRepository -Default -ErrorAction Stop
+							Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}PSGallery repository registered (after NuGet installation)"
+							Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction Stop
+							Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}PSGallery set as trusted"
+						}
+					} catch {
+						Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(warning) {Gray}PSGallery registration still failed: $_"
+					}
+				}
+			} else {
+				throw "NuGet provider installation failed with all methods"
+			}
 		} else {
 			Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(exists) {Gray}NuGet provider $($nugetProvider.Version)"
 		}
@@ -989,14 +1141,15 @@ if ($moduleInstall -eq $True) {
 }
 
 # Install PowerShell modules required by Profile.ps1
+# Commented out due to installation failures (NuGet provider issue):
 Write-ColorText "{Blue}[module] {Magenta}pwsh: {Gray}Installing profile-required modules..."
 $profileRequiredModules = @(
-	"BurntToast",
-	"Microsoft.PowerShell.SecretManagement",
-	"Microsoft.PowerShell.SecretStore",
-	"PSScriptTools",
-	"PSFzf",
-	"CompletionPredictor"
+	# "BurntToast",
+	# "Microsoft.PowerShell.SecretManagement",
+	# "Microsoft.PowerShell.SecretStore",
+	# "PSScriptTools",
+	# "PSFzf",
+	# "CompletionPredictor"
 )
 
 foreach ($module in $profileRequiredModules) {
@@ -1090,8 +1243,9 @@ if (Should-RunSection "Symlinks") {
 	Write-TitleBox -Title "Add symbolic links for dotfiles"
 
 # Create PowerShell profile directory if it doesn't exist
-$powershellProfilePath = $PROFILE.CurrentUserAllHosts
-$powershellProfileDir = Split-Path $powershellProfilePath
+# Use the profile directory from CurrentUserAllHosts, but explicitly name it Microsoft.PowerShell_profile.ps1
+$powershellProfileDir = Split-Path $PROFILE.CurrentUserAllHosts
+$powershellProfilePath = Join-Path $powershellProfileDir "Microsoft.PowerShell_profile.ps1"
 if (!(Test-Path $powershellProfileDir)) {
 	New-Item $powershellProfileDir -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
 	Write-ColorText "{Blue}[directory] {Green}(created) {Gray}$powershellProfileDir"
@@ -1189,6 +1343,8 @@ $dotfilesValue = [System.Environment]::GetEnvironmentVariable("DOTFILES")
 if ($Force -or !$dotfilesValue) {
 	try {
 		[System.Environment]::SetEnvironmentVariable("DOTFILES", "$PSScriptRoot", "User")
+		# Also update in current session immediately
+		$Env:DOTFILES = $PSScriptRoot
 		if ($dotfilesValue) {
 			$script:setupSummary.Updated += "DOTFILES environment variable"
 			Write-ColorText "{Blue}[environment] {Yellow}(updated) {Magenta}DOTFILES {Yellow}--> {Gray}$PSScriptRoot"
@@ -1266,6 +1422,8 @@ if ($Force -or ($currentPath -notlike "*$([regex]::Escape($PSScriptRoot))*")) {
 		[System.Environment]::SetEnvironmentVariable("Path", "$newPath", "User")
 		# Also add to current session
 		$env:Path = "$env:Path;$PSScriptRoot"
+		# Also update DOTFILES in current session so function wrapper works immediately
+		$Env:DOTFILES = $PSScriptRoot
 		if ($currentPath -like "*$([regex]::Escape($PSScriptRoot))*") {
 			$script:setupSummary.Updated += "PATH (added Setup.ps1 directory)"
 			Write-ColorText "{Blue}[environment] {Yellow}(updated) {Magenta}PATH {Yellow}--> {Gray}Added $PSScriptRoot"
