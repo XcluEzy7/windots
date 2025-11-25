@@ -1678,6 +1678,13 @@
 				"id": "PowerToys.AdvancedPaste.exe",
 				"matching_strategy": "Equals"
 			}
+		],
+		"floating": [
+			{
+				"kind": "Exe",
+				"id": "Microsoft.CmdPal.UI.exe",
+				"matching_strategy": "EndsWith"
+			}
 		]
 	},
 	"Prime95": {
@@ -2679,6 +2686,11 @@
 				"kind": "Exe",
 				"id": "WindowsTerminal.exe",
 				"matching_strategy": "Equals"
+			},
+			{
+				"kind": "Exe",
+				"id": "wt.exe",
+				"matching_strategy": "EndsWith"
 			}
 		]
 	},

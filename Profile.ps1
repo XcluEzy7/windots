@@ -694,21 +694,27 @@ function lazyg {
     git push
 }
 
-function Invoke-QuickCommit {
-    # Quick one-shot git workflow: add all, commit with custom message, and push
+function git-qc {
+    param(
+        [Parameter(Position=0)]
+        [string]$CommitMessage
+    )
+
     git aa
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "Failed to add all files. Aborting."
+        Write-Error "Failed to add files. Aborting."
         return
     }
 
-    $commitMessage = Read-Host "Enter commit message"
-    if ([string]::IsNullOrWhiteSpace($commitMessage)) {
-        Write-Warning "Commit message is empty. Aborting."
-        return
+    if ([string]::IsNullOrWhiteSpace($CommitMessage)) {
+        $CommitMessage = Read-Host "Enter commit message"
+        if ([string]::IsNullOrWhiteSpace($CommitMessage)) {
+            Write-Warning "Commit message is empty. Aborting."
+            return
+        }
     }
 
-    git cm "$commitMessage"
+    git cm "$CommitMessage"
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Failed to commit. Aborting."
         return
@@ -716,7 +722,8 @@ function Invoke-QuickCommit {
 
     git push
 }
-Set-Alias -Name qc -Value Invoke-QuickCommit
+Set-Alias -Name qc -Value git-qc
+Set-Alias -Name gitqc -Value git-qc
 
 # Quick Access to System Information
 function sysinfo { Get-ComputerInfo }
@@ -793,7 +800,7 @@ Set-PredictionSource
 $scriptblock = {
     param($wordToComplete, $commandAst, $cursorPosition)
     $customCompletions = @{
-        'git'  = @('status', 'add', 'commit', 'push', 'pull', 'clone', 'checkout')
+        'git'  = @('status', 'add', 'commit', 'push', 'pull', 'clone', 'checkout', 'aa', 'cm', 'qc', 'gitqc')
         'npm'  = @('install', 'start', 'run', 'test', 'build')
         'deno' = @('run', 'compile', 'bundle', 'test', 'lint', 'fmt', 'cache', 'info', 'doc', 'upgrade')
     }
@@ -926,4 +933,3 @@ if (Test-Path "$PSScriptRoot\CTTcustom.ps1") {
 }
 
 Write-Host "$($PSStyle.Foreground.Yellow)Use 'Show-Help' to display help$($PSStyle.Reset)"
-
