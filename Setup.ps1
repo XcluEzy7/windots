@@ -1233,6 +1233,46 @@ if (Should-RunSection "Git") {
 			gh auth login 
 		}
 	}
+
+	# Initialize Commitizen if package.json exists and npm is available
+	if (Get-Command npm -ErrorAction SilentlyContinue) {
+		$packageJsonPath = Join-Path $PSScriptRoot "package.json"
+		if (Test-Path $packageJsonPath) {
+			try {
+				$packageJson = Get-Content $packageJsonPath -Raw | ConvertFrom-Json
+				$hasCommitizen = $packageJson.devDependencies.PSObject.Properties.Name -contains "commitizen"
+				$hasCzAdapter = $packageJson.devDependencies.PSObject.Properties.Name -contains "cz-conventional-changelog"
+				$hasConfig = $packageJson.config -and $packageJson.config.commitizen
+
+				if (!$hasCommitizen -or !$hasCzAdapter -or !$hasConfig) {
+					Write-ColorText "{Blue}[git] {Magenta}commitizen: {Gray}Initializing Commitizen for conventional commits..."
+					Push-Location $PSScriptRoot
+					try {
+						# Install commitizen and adapter if not present
+						if (!$hasCommitizen) {
+							npm install --save-dev commitizen --silent 2>&1 | Out-Null
+						}
+						if (!$hasCzAdapter) {
+							npm install --save-dev cz-conventional-changelog --silent 2>&1 | Out-Null
+						}
+						# Initialize commitizen config if not present
+						if (!$hasConfig) {
+							npx commitizen init cz-conventional-changelog --save-dev --save-exact --yes 2>&1 | Out-Null
+						}
+						Write-ColorText "{Blue}[git] {Magenta}commitizen: {Green}(success) {Gray}Commitizen configured"
+					} catch {
+						Write-ColorText "{Blue}[git] {Magenta}commitizen: {Yellow}(warning) {Gray}Could not initialize Commitizen: $_"
+					} finally {
+						Pop-Location
+					}
+				} else {
+					Write-ColorText "{Blue}[git] {Magenta}commitizen: {Yellow}(exists) {Gray}Commitizen already configured"
+				}
+			} catch {
+				Write-ColorText "{Blue}[git] {Magenta}commitizen: {Yellow}(warning) {Gray}Could not check Commitizen configuration: $_"
+			}
+		}
+	}
 }
 
 ####################################################################

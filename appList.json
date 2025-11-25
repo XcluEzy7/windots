@@ -199,6 +199,16 @@
 				"PyYAML"
 			],
 			"install": false
+		},
+		{
+			"commandName": "npm",
+			"commandCheck": "npm list -g --depth=0",
+			"commandInvoke": "npm install -g",
+			"addonList": [
+				"commitizen",
+				"cz-conventional-changelog"
+			],
+			"install": false
 		}
 	],
 	"powershell": {
