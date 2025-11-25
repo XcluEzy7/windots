@@ -110,7 +110,7 @@ cd `your_location`
 <h4>🔧 Selective Installation & Reinstallation <small><i>(v0.02)</i></small></h4>
 <h4>🌍 Dynamic Environment Variable Expansion <small><i>(v0.03)</i></small></h4>
 <h4>🚀 Global Access & Tab Completion <small><i>(v0.04)</i></small></h4>
-<h4>⚡ Selective Section Execution & Always-Available Global Command <small><i>(v0.05)</i></small></h4>
+<h4>⚡ Quick re-install Command with w11dot-setup <small><i>(v0.05)</i></small></h4>
 
 After the initial setup, `Setup.ps1` is automatically added to your PATH, allowing you to run it from anywhere in your terminal. The script also includes:
 - **Function wrapper**: Call `w11dot-setup` from anywhere (e.g., `w11dot-setup -Environment -Force`)
