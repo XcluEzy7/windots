@@ -170,6 +170,31 @@ if ($Env:DOTPOSH -and (Test-Path $Env:DOTPOSH)) {
     }
 }
 
+# 🔧 Setup.ps1 Wrapper Function (Windots Enhancement)
+# -----------------------------------------------------------------------------------------
+# Makes Setup.ps1 callable from anywhere and ensures completions work
+if ($Env:DOTFILES -and (Test-Path "$Env:DOTFILES\Setup.ps1")) {
+    function W11dot-Setup {
+        param(
+            [switch]$Force,
+            [switch]$Packages,
+            [switch]$PowerShell,
+            [switch]$Git,
+            [switch]$Symlinks,
+            [switch]$Environment,
+            [switch]$Addons,
+            [switch]$VSCode,
+            [switch]$Themes,
+            [switch]$Miscellaneous,
+            [switch]$Komorebi,
+            [switch]$NerdFonts,
+            [switch]$WSL
+        )
+        & "$Env:DOTFILES\Setup.ps1" @PSBoundParameters
+    }
+    Set-Alias -Name w11dot-setup -Value W11dot-Setup -ErrorAction SilentlyContinue
+}
+
 # Check for Profile Updates
 function Update-Profile {
     # If function "Update-Profile_Override" is defined in profile.ps1 file

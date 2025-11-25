@@ -103,6 +103,69 @@ cd `your_location`
 . .\Setup.ps1
 ```
 
+<h4>🔧 Selective Installation & Reinstallation <small><i>(v0.02)</i></small></h4>
+<h4>🌍 Dynamic Environment Variable Expansion <small><i>(v0.03)</i></small></h4>
+<h4>🚀 Global Access & Tab Completion <small><i>(v0.04)</i></small></h4>
+
+After the initial setup, `Setup.ps1` is automatically added to your PATH, allowing you to run it from anywhere in your terminal. The script also includes:
+- **Function wrapper**: Call `w11dot-setup` from anywhere (e.g., `w11dot-setup -Environment -Force`)
+- **Tab completion**: Press Tab after `w11dot-setup -` to see all available parameters with descriptions
+- **Case-insensitive parameters**: `-Environment`, `-environment`, and `-ENVIRONMENT` all work the same
+
+Environment variables in `appList.json` now automatically expand to user-specific paths. No need to manually edit hardcoded paths - use placeholders like `%USERPROFILE%` or `%ProgramFiles%` and they will be automatically resolved to the correct paths for each user during setup.
+
+The setup script supports skip parameters to run only specific sections of the installation. This is useful for:
+- Reinstalling missing packages after issues
+- Updating specific configurations
+- Testing individual sections
+- Force overwriting existing configurations
+
+**Available Skip Parameters:**
+- `-Packages` - Install/reinstall WinGet, Chocolatey, and Scoop packages
+- `-PowerShell` - Setup PowerShell modules and experimental features
+- `-Git` - Configure Git settings
+- `-Symlinks` - Create symbolic links for dotfiles
+- `-Environment` - Set environment variables
+- `-Addons` - Install package addons/plugins
+- `-VSCode` - Install VSCode extensions
+- `-Themes` - Install Catppuccin themes
+- `-Miscellaneous` - Run miscellaneous tasks (yazi plugins, bat themes)
+- `-Komorebi` - Setup Komorebi & YASB engines
+- `-NerdFonts` - Install Nerd Fonts
+- `-WSL` - Install Windows Subsystem for Linux
+
+**Force Mode:**
+Use the `-Force` parameter with any skip parameter to overwrite existing configurations or force reinstall packages.
+
+**Examples:**
+```pwsh
+# From the repository directory (first time setup)
+. .\Setup.ps1 -Packages
+
+# From anywhere after initial setup (Setup.ps1 is in PATH)
+w11dot-setup -Packages -Force
+Setup.ps1 -Environment -Force
+w11dot-setup -Git
+
+# Force reinstall all packages even if already installed
+w11dot-setup -Packages -Force
+
+# Only setup environment variables, overwrite existing
+w11dot-setup -Environment -Force
+
+# Only setup symlinks, overwrite existing files
+w11dot-setup -Symlinks -Force
+
+# Only install VSCode extensions, reinstall even if exists
+w11dot-setup -VSCode -Force
+```
+
+> [!NOTE]
+> - Only one skip parameter can be used at a time. If no skip parameter is provided, the script runs the full installation as normal.
+> - After the initial setup, `Setup.ps1` is added to PATH automatically. You may need to restart PowerShell or reload your profile for PATH changes to take effect.
+> - Use `w11dot-setup` (function) or `Setup.ps1` (script) - both work from anywhere once PATH is configured.
+> - Tab completion works for all parameter names - just type `w11dot-setup -` and press Tab to see available options.
+
 <h4>⁉️ Overriding Defaults</h4>
 
 > [!IMPORTANT]
@@ -212,6 +275,8 @@ Follow the below links to download and learn to how to setup:
 <h2 id="features">✨ Features</h2>
 
 - 💫 All packages to install are listed in **[appList.json file](./appList.json)** - Easy to maintain!
+- 🔧 **Selective installation** - Run only specific sections with skip parameters (e.g., `-Packages`, `-Environment`, `-Symlinks`) for targeted updates and troubleshooting
+- 🚀 **Global access** - `Setup.ps1` is added to PATH automatically, call `w11dot-setup` or `Setup.ps1` from anywhere with full tab completion support
 - 🎨 Main theme [Catppuccin](https://github.com/catppuccin/catppuccin) for everything!
 - 🎀 Minimal [Yasb](https://github.com/amnweb/yasb) status bar
 - 💖 Beautiful **_[wallpapers](https://github.com/jacquindev/windots/tree/main/windows/walls#readme)_**, and [live wallpapers](./windows/walls/live-walls/) for [Lively Wallpapers](https://www.rocksdanister.com/lively/)

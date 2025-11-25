@@ -42,10 +42,52 @@
 
 #>
 Param(
-	[switch]$Force
+	[switch]$Force,
+	[switch]$Packages,
+	[switch]$PowerShell,
+	[switch]$Git,
+	[switch]$Symlinks,
+	[switch]$Environment,
+	[switch]$Addons,
+	[switch]$VSCode,
+	[switch]$Themes,
+	[switch]$Miscellaneous,
+	[switch]$Komorebi,
+	[switch]$NerdFonts,
+	[switch]$WSL
 )
 
 $VerbosePreference = "SilentlyContinue"
+
+# Validate skip parameters - only one can be used at a time
+$skipParams = @($Packages, $PowerShell, $Git, $Symlinks, $Environment, $Addons, $VSCode, $Themes, $Miscellaneous, $Komorebi, $NerdFonts, $WSL)
+$skipCount = ($skipParams | Where-Object { $_ -eq $true }).Count
+if ($skipCount -gt 1) {
+	Write-Error "Only one skip parameter can be used at a time. Please specify only one section to run."
+	exit 1
+}
+
+# Determine which section to run (if any)
+$runSection = $null
+if ($Packages) { $runSection = "Packages" }
+elseif ($PowerShell) { $runSection = "PowerShell" }
+elseif ($Git) { $runSection = "Git" }
+elseif ($Symlinks) { $runSection = "Symlinks" }
+elseif ($Environment) { $runSection = "Environment" }
+elseif ($Addons) { $runSection = "Addons" }
+elseif ($VSCode) { $runSection = "VSCode" }
+elseif ($Themes) { $runSection = "Themes" }
+elseif ($Miscellaneous) { $runSection = "Miscellaneous" }
+elseif ($Komorebi) { $runSection = "Komorebi" }
+elseif ($NerdFonts) { $runSection = "NerdFonts" }
+elseif ($WSL) { $runSection = "WSL" }
+
+# Helper function to check if a section should run
+function Should-RunSection {
+	param([string]$SectionName)
+	if ($null -eq $runSection) { return $true } # Full install
+	return ($runSection -eq $SectionName)
+}
 
 # Tracking variables for summary
 $script:setupSummary = @{
@@ -117,7 +159,9 @@ function Add-ScoopBucket {
 
 function Install-ScoopApp {
 	param ([string]$Package, [switch]$Global, [array]$AdditionalArgs)
-	if (!(scoop info $Package).Installed) {
+	$scoopInfo = scoop info $Package
+	$isInstalled = $scoopInfo.Installed
+	if (!$isInstalled) {
 		$scoopCmd = "scoop install $Package"
 		if ($Global) { $scoopCmd += " -g" }
 		if ($AdditionalArgs.Count -ge 1) {
@@ -125,6 +169,19 @@ function Install-ScoopApp {
 			$scoopCmd += " $AdditionalArgs"
 		}
 		''; Invoke-Expression "$scoopCmd"; ''
+	} elseif ($Force) {
+		# Force reinstall
+		$scoopCmd = "scoop uninstall $Package"
+		if ($Global) { $scoopCmd += " -g" }
+		Invoke-Expression "$scoopCmd >`$null 2>&1"
+		$scoopCmd = "scoop install $Package"
+		if ($Global) { $scoopCmd += " -g" }
+		if ($AdditionalArgs.Count -ge 1) {
+			$AdditionalArgs = $AdditionalArgs -join ' '
+			$scoopCmd += " $AdditionalArgs"
+		}
+		''; Invoke-Expression "$scoopCmd"; ''
+		Write-ColorText "{Blue}[package] {Magenta}scoop: {Green}(reinstalled) {Gray}$Package"
 	} else {
 		Write-ColorText "{Blue}[package] {Magenta}scoop: {Yellow}(exists) {Gray}$Package"
 	}
@@ -134,7 +191,8 @@ function Install-WinGetApp {
 	param ([string]$PackageID, [array]$AdditionalArgs, [string]$Source)
 
 	winget list --exact -q $PackageID | Out-Null
-	if (!$?) {
+	$isInstalled = $?
+	if (!$isInstalled) {
 		$wingetCmd = "winget install $PackageID"
 		if ($AdditionalArgs.Count -ge 1) {
 			$AdditionalArgs = $AdditionalArgs -join ' '
@@ -148,6 +206,21 @@ function Install-WinGetApp {
 		} else {
 			Write-ColorText "{Blue}[package] {Magenta}winget: {Red}(failed) {Gray}$PackageID"
 		}
+	} elseif ($Force) {
+		# Force reinstall
+		$wingetCmd = "winget install $PackageID --force"
+		if ($AdditionalArgs.Count -ge 1) {
+			$AdditionalArgs = $AdditionalArgs -join ' '
+			$wingetCmd += " $AdditionalArgs"
+		}
+		if ($Source -eq "msstore") { $wingetCmd += " --source msstore" }
+		else { $wingetCmd += " --source winget" }
+		Invoke-Expression "$wingetCmd >`$null 2>&1"
+		if ($LASTEXITCODE -eq 0) {
+			Write-ColorText "{Blue}[package] {Magenta}winget: {Green}(reinstalled) {Gray}$PackageID"
+		} else {
+			Write-ColorText "{Blue}[package] {Magenta}winget: {Red}(failed) {Gray}$PackageID"
+		}
 	} else {
 		Write-ColorText "{Blue}[package] {Magenta}winget: {Yellow}(exists) {Gray}$PackageID"
 	}
@@ -157,7 +230,8 @@ function Install-ChocoApp {
 	param ([string]$Package, [string]$Version, [array]$AdditionalArgs)
 
 	$chocoList = choco list $Package
-	if ($chocoList -like "0 packages installed.") {
+	$isInstalled = $chocoList -notlike "0 packages installed."
+	if (!$isInstalled) {
 		$chocoCmd = "choco install $Package"
 		if ($Version) {
 			$pkgVer = "--version=$Version"
@@ -173,22 +247,213 @@ function Install-ChocoApp {
 		} else {
 			Write-ColorText "{Blue}[package] {Magenta}choco: {Red}(failed) {Gray}$Package"
 		}
+	} elseif ($Force) {
+		# Force reinstall
+		$chocoCmd = "choco install $Package --force"
+		if ($Version) {
+			$pkgVer = "--version=$Version"
+			$chocoCmd += " $pkgVer"
+		}
+		if ($AdditionalArgs.Count -ge 1) {
+			$AdditionalArgs = $AdditionalArgs -join ' '
+			$chocoCmd += " $AdditionalArgs"
+		}
+		Invoke-Expression "$chocoCmd >`$null 2>&1"
+		if ($LASTEXITCODE -eq 0) {
+			Write-ColorText "{Blue}[package] {Magenta}choco: {Green}(reinstalled) {Gray}$Package"
+		} else {
+			Write-ColorText "{Blue}[package] {Magenta}choco: {Red}(failed) {Gray}$Package"
+		}
 	} else {
 		Write-ColorText "{Blue}[package] {Magenta}choco: {Yellow}(exists) {Gray}$Package"
 	}
 }
 
+function Initialize-PowerShellPrerequisites {
+	Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Gray}Initializing PowerShell prerequisites..."
+
+	# Enforce TLS 1.2 for secure connections to PowerShell Gallery
+	try {
+		[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+		Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}TLS 1.2 enforced"
+	} catch {
+		Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(warning) {Gray}Could not enforce TLS 1.2: $_"
+	}
+
+	# Register and trust PSGallery repository
+	try {
+		$psGallery = Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue
+		if (!$psGallery) {
+			Register-PSRepository -Default -ErrorAction Stop
+			Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}PSGallery repository registered"
+		} else {
+			Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(exists) {Gray}PSGallery repository"
+		}
+
+		# Set PSGallery as trusted
+		if ($psGallery.InstallationPolicy -ne 'Trusted') {
+			Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction Stop
+			Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}PSGallery set as trusted"
+		}
+	} catch {
+		Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Red}(failed) {Gray}PSGallery configuration: $_"
+		$script:setupSummary.Failed += "PowerShell Prerequisite: PSGallery configuration"
+	}
+
+	# Install/Update NuGet provider (required for module installation)
+	try {
+		$nugetProvider = Get-PackageProvider -Name NuGet -ListAvailable -ErrorAction SilentlyContinue | 
+			Where-Object { [version]$_.Version -ge [version]"2.8.5.201" } | 
+			Sort-Object Version -Descending | 
+			Select-Object -First 1
+
+		if (!$nugetProvider) {
+			Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Gray}Installing NuGet provider (minimum 2.8.5.201)..."
+			Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser -ErrorAction Stop | Out-Null
+			Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}NuGet provider installed"
+		} else {
+			Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(exists) {Gray}NuGet provider $($nugetProvider.Version)"
+		}
+	} catch {
+		Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Red}(failed) {Gray}NuGet provider installation: $_"
+		$script:setupSummary.Failed += "PowerShell Prerequisite: NuGet provider"
+	}
+
+	# Update PackageManagement and PowerShellGet modules if needed
+	try {
+		Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Gray}Checking PackageManagement module..."
+		$packageMgmt = Get-Module -ListAvailable -Name PackageManagement | Sort-Object Version -Descending | Select-Object -First 1
+		if ($packageMgmt) {
+			Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(exists) {Gray}PackageManagement $($packageMgmt.Version)"
+		} else {
+			Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Gray}Installing PackageManagement module..."
+			Install-Module -Name PackageManagement -Force -Scope CurrentUser -AllowClobber -SkipPublisherCheck -ErrorAction Stop | Out-Null
+			Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}PackageManagement installed"
+		}
+	} catch {
+		Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(warning) {Gray}PackageManagement update: $_"
+	}
+
+	try {
+		Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Gray}Checking PowerShellGet module..."
+		$psGet = Get-Module -ListAvailable -Name PowerShellGet | Sort-Object Version -Descending | Select-Object -First 1
+		if ($psGet) {
+			Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(exists) {Gray}PowerShellGet $($psGet.Version)"
+		} else {
+			Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Gray}Installing PowerShellGet module..."
+			Install-Module -Name PowerShellGet -Force -Scope CurrentUser -AllowClobber -SkipPublisherCheck -ErrorAction Stop | Out-Null
+			Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}PowerShellGet installed"
+		}
+	} catch {
+		Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(warning) {Gray}PowerShellGet update: $_"
+	}
+
+	# Import PackageManagement and PowerShellGet to ensure they're available
+	try {
+		Import-PackageProvider -Name NuGet -Force -ErrorAction SilentlyContinue | Out-Null
+		Import-Module PackageManagement -Force -ErrorAction SilentlyContinue | Out-Null
+		Import-Module PowerShellGet -Force -ErrorAction SilentlyContinue | Out-Null
+	} catch {
+		Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(warning) {Gray}Module import: $_"
+	}
+
+	''
+}
+
 function Install-PowerShellModule {
 	param ([string]$Module, [string]$Version, [array]$AdditionalArgs)
 
-	if (!(Get-InstalledModule -Name $Module -ErrorAction SilentlyContinue)) {
-		$installModule = "Install-Module -Name $Module"
-		if ($null -ne $Version) { $installModule += " -RequiredVersion $Version" }
-		if ($AdditionalArgs.Count -ge 1) {
-			$addArgs = $AdditionalArgs -join ' '
-			$installModule = " $addArgs"
+	$moduleInstalled = Get-InstalledModule -Name $Module -ErrorAction SilentlyContinue
+	if (!$moduleInstalled) {
+		try {
+			$installParams = @{
+				Name = $Module
+				Scope = 'CurrentUser'
+				Force = $true
+				AllowClobber = $true
+				SkipPublisherCheck = $true
+				ErrorAction = 'Stop'
+			}
+
+			if ($null -ne $Version) {
+				$installParams['RequiredVersion'] = $Version
+			}
+
+			# Add additional arguments if provided
+			if ($AdditionalArgs.Count -ge 1) {
+				# Parse additional args and add to installParams
+				for ($i = 0; $i -lt $AdditionalArgs.Count; $i++) {
+					if ($AdditionalArgs[$i] -match '^-') {
+						$paramName = $AdditionalArgs[$i].TrimStart('-')
+						if ($i + 1 -lt $AdditionalArgs.Count -and $AdditionalArgs[$i + 1] -notmatch '^-') {
+							$paramValue = $AdditionalArgs[$i + 1]
+							$installParams[$paramName] = $paramValue
+							$i++
+						} else {
+							$installParams[$paramName] = $true
+						}
+					}
+				}
+			}
+
+			Install-Module @installParams
+			
+			# Verify installation
+			$verifyModule = Get-InstalledModule -Name $Module -ErrorAction SilentlyContinue
+			if ($verifyModule) {
+				Write-ColorText "{Blue}[module] {Magenta}pwsh: {Green}(success) {Gray}$Module"
+			} else {
+				throw "Module installation completed but verification failed"
+			}
+		} catch {
+			Write-ColorText "{Blue}[module] {Magenta}pwsh: {Red}(failed) {Gray}$Module {DarkGray}Error: $_"
+			$script:setupSummary.Failed += "PowerShell Module: $Module"
 		}
-		Invoke-Expression "$installModule"
+	} elseif ($Force) {
+		# Force reinstall
+		try {
+			$installParams = @{
+				Name = $Module
+				Scope = 'CurrentUser'
+				Force = $true
+				AllowClobber = $true
+				SkipPublisherCheck = $true
+				ErrorAction = 'Stop'
+			}
+
+			if ($null -ne $Version) {
+				$installParams['RequiredVersion'] = $Version
+			}
+
+			# Add additional arguments if provided
+			if ($AdditionalArgs.Count -ge 1) {
+				for ($i = 0; $i -lt $AdditionalArgs.Count; $i++) {
+					if ($AdditionalArgs[$i] -match '^-') {
+						$paramName = $AdditionalArgs[$i].TrimStart('-')
+						if ($i + 1 -lt $AdditionalArgs.Count -and $AdditionalArgs[$i + 1] -notmatch '^-') {
+							$paramValue = $AdditionalArgs[$i + 1]
+							$installParams[$paramName] = $paramValue
+							$i++
+						} else {
+							$installParams[$paramName] = $true
+						}
+					}
+				}
+			}
+
+			Install-Module @installParams
+			
+			# Verify installation
+			$verifyModule = Get-InstalledModule -Name $Module -ErrorAction SilentlyContinue
+			if ($verifyModule) {
+				Write-ColorText "{Blue}[module] {Magenta}pwsh: {Green}(reinstalled) {Gray}$Module"
+			} else {
+				throw "Module reinstallation completed but verification failed"
+			}
+		} catch {
+			Write-ColorText "{Blue}[module] {Magenta}pwsh: {Red}(failed) {Gray}$Module {DarkGray}Error: $_"
+			$script:setupSummary.Failed += "PowerShell Module: $Module"
+		}
 	} else {
 		Write-ColorText "{Blue}[module] {Magenta}pwsh: {Yellow}(exists) {Gray}$Module"
 	}
@@ -455,37 +720,45 @@ $i = 1
 ######################################################################
 ###													NERD FONTS														 ###
 ######################################################################
-# install nerd fonts
-Write-TitleBox -Title "Nerd Fonts Installation"
-Write-ColorText "{Green}The following fonts are highly recommended:`n{DarkGray}(Please skip this step if you already installed Nerd Fonts)`n`n  {Gray}● Cascadia Code Nerd Font`n  ● FantasqueSansM Nerd Font`n  ● FiraCode Nerd Font`n  ● JetBrainsMono Nerd Font`n"
+if (Should-RunSection "NerdFonts") {
+	# install nerd fonts
+	Write-TitleBox -Title "Nerd Fonts Installation"
+	if ($Force) {
+		Write-ColorText "{Yellow}Force mode: Reinstalling Nerd Fonts..."
+		& ([scriptblock]::Create((Invoke-WebRequest 'https://to.loredo.me/Install-NerdFont.ps1'))) -Scope AllUsers -Confirm:$False
+	} else {
+		Write-ColorText "{Green}The following fonts are highly recommended:`n{DarkGray}(Please skip this step if you already installed Nerd Fonts)`n`n  {Gray}● Cascadia Code Nerd Font`n  ● FantasqueSansM Nerd Font`n  ● FiraCode Nerd Font`n  ● JetBrainsMono Nerd Font`n"
 
-for ($count = 5; $count -ge 0; $count--) {
-	Write-ColorText "`r{Magenta}Install Nerd Fonts now? [y/N]: {DarkGray}(Exit in {Blue}$count {DarkGray}seconds) {Gray}" -NoNewLine
+		for ($count = 5; $count -ge 0; $count--) {
+			Write-ColorText "`r{Magenta}Install Nerd Fonts now? [y/N]: {DarkGray}(Exit in {Blue}$count {DarkGray}seconds) {Gray}" -NoNewLine
 
-	if ([System.Console]::KeyAvailable) {
-		$key = [System.Console]::ReadKey($false)
-		if ($key.Key -ne 'Y') {
-			Write-ColorText "`r{DarkGray}Skipped installing Nerd Fonts...                                                                 "
-			break
-		} else {
-			& ([scriptblock]::Create((Invoke-WebRequest 'https://to.loredo.me/Install-NerdFont.ps1'))) -Scope AllUsers -Confirm:$False
-			break
+			if ([System.Console]::KeyAvailable) {
+				$key = [System.Console]::ReadKey($false)
+				if ($key.Key -ne 'Y') {
+					Write-ColorText "`r{DarkGray}Skipped installing Nerd Fonts...                                                                 "
+					break
+				} else {
+					& ([scriptblock]::Create((Invoke-WebRequest 'https://to.loredo.me/Install-NerdFont.ps1'))) -Scope AllUsers -Confirm:$False
+					break
+				}
+			}
+			Start-Sleep -Seconds 1
 		}
 	}
-	Start-Sleep -Seconds 1
+	Refresh ($i++)
 }
-Refresh ($i++)
 
 Clear-Host
 
-########################################################################
-###													WINGET PACKAGES 			 									 ###
-########################################################################
-# Retrieve information from json file
+# Retrieve information from json file (needed for multiple sections)
 $json = Get-Content "$PSScriptRoot\appList.json" -Raw | ConvertFrom-Json
 
-# Winget Packages
-Write-TitleBox -Title "WinGet Packages Installation"
+########################################################################
+###													PACKAGES (WINGET, CHOCOLATEY, SCOOP) 			 									 ###
+########################################################################
+if (Should-RunSection "Packages") {
+	# Winget Packages
+	Write-TitleBox -Title "WinGet Packages Installation"
 $wingetItem = $json.installSource.winget
 $wingetPkgs = $wingetItem.packageList
 $wingetArgs = $wingetItem.additionalArgs
@@ -684,12 +957,17 @@ if ($scoopInstall -eq $True) {
 	Write-LockFile -PackageSource scoop -FileName scoopfile.json
 	Refresh ($i++)
 }
+}
 
 ########################################################################
 ###												 	POWERSHELL SETUP 												 ###
 ########################################################################
-# Powershell Modules
-Write-TitleBox -Title "PowerShell Modules + Experimental Features"
+if (Should-RunSection "PowerShell") {
+	# Powershell Modules
+	Write-TitleBox -Title "PowerShell Modules + Experimental Features"
+
+	# Initialize prerequisites (TLS, PSGallery, NuGet provider, etc.)
+	Initialize-PowerShellPrerequisites
 
 # Install modules if not installed yet
 $moduleItem = $json.powershell.psmodule
@@ -722,7 +1000,8 @@ $profileRequiredModules = @(
 )
 
 foreach ($module in $profileRequiredModules) {
-	if (!(Get-Module -ListAvailable -Name $module -ErrorAction SilentlyContinue)) {
+	$moduleInstalled = Get-Module -ListAvailable -Name $module -ErrorAction SilentlyContinue
+	if ($Force -or !$moduleInstalled) {
 		try {
 			Install-Module -Name $module -Scope CurrentUser -Force -AllowClobber -SkipPublisherCheck -ErrorAction Stop
 			Write-ColorText "{Blue}[module] {Magenta}pwsh: {Green}(success) {Gray}$module"
@@ -747,7 +1026,7 @@ if ($featureEnable -eq $True) {
 	''
 	foreach ($f in $featureList) {
 		$featureExists = Get-ExperimentalFeature -Name $f -ErrorAction SilentlyContinue
-		if ($featureExists -and ($featureExists.Enabled -eq $False)) {
+		if ($Force -or ($featureExists -and ($featureExists.Enabled -eq $False))) {
 			Enable-ExperimentalFeature -Name $f -Scope CurrentUser -ErrorAction SilentlyContinue
 			if ($LASTEXITCODE -eq 0) {
 				Write-ColorText "{Blue}[experimental feature] {Magenta}pwsh: {Green}(success) {Gray}$f"
@@ -761,39 +1040,54 @@ if ($featureEnable -eq $True) {
 
 	Refresh ($i++)
 }
+}
 
 ######################################################################
 ###														GIT SETUP											    	 ###
 ######################################################################
-# Configure git
-Write-TitleBox -Title "SETUP GIT FOR WINDOWS"
-if (Get-Command git -ErrorAction SilentlyContinue) {
-	$gitUserName = (git config user.name)
-	$gitUserMail = (git config user.email)
+if (Should-RunSection "Git") {
+	# Configure git
+	Write-TitleBox -Title "SETUP GIT FOR WINDOWS"
+	if (Get-Command git -ErrorAction SilentlyContinue) {
+		$gitUserName = (git config user.name)
+		$gitUserMail = (git config user.email)
 
-	if ($null -eq $gitUserName) {
-		$gitUserName = $(Write-Host "Input your git name: " -NoNewline -ForegroundColor Magenta; Read-Host)
-	} else {
-		Write-ColorText "{Blue}[user.name]  {Magenta}git: {Yellow}(already set) {Gray}$gitUserName"
+		if ($Force -or $null -eq $gitUserName) {
+			if ($Force -and $null -ne $gitUserName) {
+				Write-ColorText "{Yellow}Force mode: Re-prompting for git name..."
+			}
+			$gitUserName = $(Write-Host "Input your git name: " -NoNewline -ForegroundColor Magenta; Read-Host)
+		} else {
+			Write-ColorText "{Blue}[user.name]  {Magenta}git: {Yellow}(already set) {Gray}$gitUserName"
+		}
+		if ($Force -or $null -eq $gitUserMail) {
+			if ($Force -and $null -ne $gitUserMail) {
+				Write-ColorText "{Yellow}Force mode: Re-prompting for git email..."
+			}
+			$gitUserMail = $(Write-Host "Input your git email: " -NoNewline -ForegroundColor Magenta; Read-Host)
+		} else {
+			Write-ColorText "{Blue}[user.email] {Magenta}git: {Yellow}(already set) {Gray}$gitUserMail"
+		}
+
+		git submodule update --init --recursive
 	}
-	if ($null -eq $gitUserMail) {
-		$gitUserMail = $(Write-Host "Input your git email: " -NoNewline -ForegroundColor Magenta; Read-Host)
-	} else {
-		Write-ColorText "{Blue}[user.email] {Magenta}git: {Yellow}(already set) {Gray}$gitUserMail"
+
+	if (Get-Command gh -ErrorAction SilentlyContinue) {
+		if ($Force) {
+			Write-ColorText "{Yellow}Force mode: Re-authenticating GitHub CLI..."
+			gh auth login
+		} elseif (!(gh auth status)) { 
+			gh auth login 
+		}
 	}
-
-	git submodule update --init --recursive
-}
-
-if (Get-Command gh -ErrorAction SilentlyContinue) {
-	if (!(gh auth status)) { gh auth login }
 }
 
 ####################################################################
 ###															SYMLINKS 												 ###
 ####################################################################
-# symlinks
-Write-TitleBox -Title "Add symbolic links for dotfiles"
+if (Should-RunSection "Symlinks") {
+	# symlinks
+	Write-TitleBox -Title "Add symbolic links for dotfiles"
 
 # Create PowerShell profile directory if it doesn't exist
 $powershellProfilePath = $PROFILE.CurrentUserAllHosts
@@ -875,18 +1169,20 @@ if (Test-Path "$PSScriptRoot\windows" -PathType Container) {
 	}
 }
 
-Refresh ($i++)
+	Refresh ($i++)
 
-# Set the right git name and email for the user after symlinking
-if (Get-Command git -ErrorAction SilentlyContinue) {
-	git config --global user.name $gitUserName
-	git config --global user.email $gitUserMail
+	# Set the right git name and email for the user after symlinking
+	if (Get-Command git -ErrorAction SilentlyContinue) {
+		git config --global user.name $gitUserName
+		git config --global user.email $gitUserMail
+	}
 }
 
 ##########################################################################
 ###													ENVIRONMENT VARIABLES											 ###
 ##########################################################################
-Write-TitleBox -Title "Set Environment Variables"
+if (Should-RunSection "Environment") {
+	Write-TitleBox -Title "Set Environment Variables"
 
 # Set DOTFILES and DOTPOSH environment variables for windots
 $dotfilesValue = [System.Environment]::GetEnvironmentVariable("DOTFILES")
@@ -930,44 +1226,115 @@ if ($Force -or !$dotposhValue) {
 	Write-ColorText "{Blue}[environment] {Yellow}(exists) {Magenta}DOTPOSH {Yellow}--> {Gray}$dotposhValue"
 }
 
+# Add dotposh\Modules to PSModulePath so custom modules are discoverable
+# Use the actual DOTPOSH path (either from environment or calculated)
+$actualDotposhPath = if ($dotposhValue) { $dotposhValue } else { $dotposhPath }
+$dotposhModulesPath = Join-Path -Path "$actualDotposhPath" -ChildPath "Modules"
+if (Test-Path $dotposhModulesPath) {
+	try {
+		$currentPSModulePath = [System.Environment]::GetEnvironmentVariable("PSModulePath", "User")
+		if ($currentPSModulePath -notlike "*$([regex]::Escape($dotposhModulesPath))*") {
+			if ($currentPSModulePath) {
+				$newPSModulePath = "$currentPSModulePath;$dotposhModulesPath"
+			} else {
+				$newPSModulePath = $dotposhModulesPath
+			}
+			[System.Environment]::SetEnvironmentVariable("PSModulePath", "$newPSModulePath", "User")
+			$script:setupSummary.Created += "PSModulePath (added dotposh\Modules)"
+			Write-ColorText "{Blue}[environment] {Green}(added) {Magenta}PSModulePath {Yellow}--> {Gray}$dotposhModulesPath"
+		} else {
+			$script:setupSummary.Exists += "PSModulePath (dotposh\Modules already included)"
+			Write-ColorText "{Blue}[environment] {Yellow}(exists) {Magenta}PSModulePath {Yellow}--> {Gray}dotposh\Modules already included"
+		}
+	} catch {
+		$script:setupSummary.Failed += "PSModulePath configuration"
+		Write-ColorText "{Blue}[environment] {Red}(failed) {Magenta}PSModulePath {Gray}Error: $_"
+	}
+} else {
+	Write-ColorText "{Yellow}[environment] {Gray}Warning: dotposh\Modules directory not found at $dotposhModulesPath"
+}
+
+# Add Setup.ps1 directory to PATH so it can be run from anywhere
+$currentPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
+if ($Force -or ($currentPath -notlike "*$([regex]::Escape($PSScriptRoot))*")) {
+	try {
+		if ($currentPath) {
+			$newPath = "$currentPath;$PSScriptRoot"
+		} else {
+			$newPath = $PSScriptRoot
+		}
+		[System.Environment]::SetEnvironmentVariable("Path", "$newPath", "User")
+		# Also add to current session
+		$env:Path = "$env:Path;$PSScriptRoot"
+		if ($currentPath -like "*$([regex]::Escape($PSScriptRoot))*") {
+			$script:setupSummary.Updated += "PATH (added Setup.ps1 directory)"
+			Write-ColorText "{Blue}[environment] {Yellow}(updated) {Magenta}PATH {Yellow}--> {Gray}Added $PSScriptRoot"
+		} else {
+			$script:setupSummary.Created += "PATH (added Setup.ps1 directory)"
+			Write-ColorText "{Blue}[environment] {Green}(added) {Magenta}PATH {Yellow}--> {Gray}Added $PSScriptRoot"
+		}
+	} catch {
+		$script:setupSummary.Failed += "PATH configuration"
+		Write-ColorText "{Blue}[environment] {Red}(failed) {Magenta}PATH {Gray}Error: $_"
+	}
+} else {
+	$script:setupSummary.Exists += "PATH (Setup.ps1 directory already included)"
+	Write-ColorText "{Blue}[environment] {Yellow}(exists) {Magenta}PATH {Yellow}--> {Gray}Setup.ps1 directory already included"
+}
+
 # Set environment variables from JSON config
 $envVars = $json.environmentVariable
 foreach ($env in $envVars) {
 	$envCommand = $env.commandName
 	$envKey = $env.environmentKey
 	$envValue = $env.environmentValue
+	
+	# Expand environment variables in the value (e.g., %USERPROFILE% -> C:\Users\username)
+	# This allows users to use placeholders like %USERPROFILE% or %ProgramFiles% in appList.json
+	$expandedValue = [System.Environment]::ExpandEnvironmentVariables($envValue)
+	
 	if (Get-Command $envCommand -ErrorAction SilentlyContinue) {
-		if (![System.Environment]::GetEnvironmentVariable("$envKey")) {
-			Write-Verbose "Set environment variable of $envCommand`: $envKey -> $envValue"
+		$existingValue = [System.Environment]::GetEnvironmentVariable("$envKey")
+		if ($Force -or !$existingValue) {
+			Write-Verbose "Set environment variable of $envCommand`: $envKey -> $expandedValue (expanded from: $envValue)"
 			try {
-				[System.Environment]::SetEnvironmentVariable("$envKey", "$envValue", "User")
-				Write-ColorText "{Blue}[environment] {Green}(added) {Magenta}$envKey {Yellow}--> {Gray}$envValue"
+				# Set the expanded value, not the placeholder
+				[System.Environment]::SetEnvironmentVariable("$envKey", "$expandedValue", "User")
+				if ($existingValue) {
+					Write-ColorText "{Blue}[environment] {Yellow}(updated) {Magenta}$envKey {Yellow}--> {Gray}$expandedValue"
+				} else {
+					Write-ColorText "{Blue}[environment] {Green}(added) {Magenta}$envKey {Yellow}--> {Gray}$expandedValue"
+				}
 			} catch {
 				Write-Error -ErrorAction Stop "An error occurred: $_"
 			}
 		} else {
-			$value = [System.Environment]::GetEnvironmentVariable("$envKey")
-			Write-ColorText "{Blue}[environment] {Yellow}(exists) {Magenta}$envKey {Yellow}--> {Gray}$value"
+			Write-ColorText "{Blue}[environment] {Yellow}(exists) {Magenta}$envKey {Yellow}--> {Gray}$existingValue"
 		}
 	}
 }
 if (Get-Command gh -ErrorAction SilentlyContinue) {
 	$ghDashAvailable = (& gh.exe extension list | Select-String -Pattern "dlvhdr/gh-dash" -SimpleMatch -CaseSensitive)
 	if ($ghDashAvailable) {
-		if (![System.Environment]::GetEnvironmentVariable("GH_DASH_CONFIG")) {
+		$existingValue = [System.Environment]::GetEnvironmentVariable("GH_DASH_CONFIG")
+		if ($Force -or !$existingValue) {
 			try {
 				[System.Environment]::SetEnvironmentVariable("GH_DASH_CONFIG", "$env:USERPROFILE\.config\gh-dash\config.yml", "User")
-				Write-ColorText "{Blue}[environment] {Green}(added) {Magenta}GH_DASH_CONFIG {Yellow}--> {Gray}$env:USERPROFILE\.config\gh-dash\config.yml"
+				if ($existingValue) {
+					Write-ColorText "{Blue}[environment] {Yellow}(updated) {Magenta}GH_DASH_CONFIG {Yellow}--> {Gray}$env:USERPROFILE\.config\gh-dash\config.yml"
+				} else {
+					Write-ColorText "{Blue}[environment] {Green}(added) {Magenta}GH_DASH_CONFIG {Yellow}--> {Gray}$env:USERPROFILE\.config\gh-dash\config.yml"
+				}
 			} catch {
 				Write-Error -ErrorAction Stop "An error occurred: $_"
 			}
 		} else {
-			$value = [System.Environment]::GetEnvironmentVariable("GH_DASH_CONFIG")
-			Write-ColorText "{Blue}[environment] {Yellow}(exists) {Magenta}GH_DASH_CONFIG {Yellow}--> {Gray}$value"
+			Write-ColorText "{Blue}[environment] {Yellow}(exists) {Magenta}GH_DASH_CONFIG {Yellow}--> {Gray}$existingValue"
 		}
 	}
 }
-Refresh ($i++)
+	Refresh ($i++)
+}
 
 ########################################################################################
 ###										SETUP NODEJS / INSTALL NVM (Node Version Manager)							 ###
@@ -995,49 +1362,59 @@ Refresh ($i++)
 ########################################################################
 ###														ADDONS / PLUGINS											 ###
 ########################################################################
-# plugins / extensions / addons
-$myAddons = $json.packageAddon
-foreach ($a in $myAddons) {
-	$aCommandName = $a.commandName
-	$aCommandCheck = $a.commandCheck
-	$aCommandInvoke = $a.commandInvoke
-	$aList = [array]$a.addonList
-	$aInstall = $a.install
+if (Should-RunSection "Addons") {
+	# plugins / extensions / addons
+	$myAddons = $json.packageAddon
+	foreach ($a in $myAddons) {
+		$aCommandName = $a.commandName
+		$aCommandCheck = $a.commandCheck
+		$aCommandInvoke = $a.commandInvoke
+		$aList = [array]$a.addonList
+		$aInstall = $a.install
 
-	if ($aInstall -eq $True) {
-		if (Get-Command $aCommandName -ErrorAction SilentlyContinue) {
-			Write-TitleBox -Title "$aCommandName's Addons Installation"
-			foreach ($p in $aList) {
-				if (Invoke-Expression "$aCommandCheck" | Out-String | Where-Object { $_ -notmatch "$p*" }) {
-					Write-Verbose "Executing: $aCommandInvoke $p"
-					Invoke-Expression "$aCommandInvoke $p >`$null 2>&1"
-					if ($LASTEXITCODE -eq 0) {	Write-ColorText "➕ {Blue}[addon] {Magenta}$aCommandName`: {Green}(success) {Gray}$p" }
-					else {	Write-ColorText "➕ {Blue}[addon] {Magenta}$aCommandName`: {Red}(failed) {Gray}$p" }
-				} else { Write-ColorText "➕ {Blue}[addon] {Magenta}$aCommandName`: {Yellow}(exists) {Gray}$p" }
+		if ($aInstall -eq $True) {
+			if (Get-Command $aCommandName -ErrorAction SilentlyContinue) {
+				Write-TitleBox -Title "$aCommandName's Addons Installation"
+				foreach ($p in $aList) {
+					$isInstalled = (Invoke-Expression "$aCommandCheck" | Out-String | Select-String -Pattern "$p" -Quiet)
+					if ($Force -or !$isInstalled) {
+						Write-Verbose "Executing: $aCommandInvoke $p"
+						Invoke-Expression "$aCommandInvoke $p >`$null 2>&1"
+						if ($LASTEXITCODE -eq 0) {	Write-ColorText "➕ {Blue}[addon] {Magenta}$aCommandName`: {Green}(success) {Gray}$p" }
+						else {	Write-ColorText "➕ {Blue}[addon] {Magenta}$aCommandName`: {Red}(failed) {Gray}$p" }
+					} else { Write-ColorText "➕ {Blue}[addon] {Magenta}$aCommandName`: {Yellow}(exists) {Gray}$p" }
+				}
 			}
 		}
 	}
+	Refresh ($i++)
 }
-Refresh ($i++)
 
 ########################################################################
 ###													VSCODE EXTENSIONS												 ###
 ########################################################################
-# VSCode Extensions
-if (Get-Command code -ErrorAction SilentlyContinue) {
-	Write-TitleBox -Title "VSCode Extensions Installation"
-	$extensionList = Get-Content "$PSScriptRoot\extensions.list"
-	foreach ($ext in $extensionList) {
-		if (!(code --list-extensions | Select-String "$ext")) {
-			Write-Verbose -Message "Installing VSCode Extension: $ext"
-			Invoke-Expression "code --install-extension $ext >`$null 2>&1"
-			if ($LASTEXITCODE -eq 0) {
-				Write-ColorText "{Blue}[extension] {Green}(success) {Gray}$ext"
+if (Should-RunSection "VSCode") {
+	# VSCode Extensions
+	if (Get-Command code -ErrorAction SilentlyContinue) {
+		Write-TitleBox -Title "VSCode Extensions Installation"
+		$extensionList = Get-Content "$PSScriptRoot\extensions.list"
+		foreach ($ext in $extensionList) {
+			$isInstalled = (code --list-extensions | Select-String "$ext" -Quiet)
+			if ($Force -or !$isInstalled) {
+				if ($Force -and $isInstalled) {
+					# Uninstall first, then reinstall
+					Invoke-Expression "code --uninstall-extension $ext >`$null 2>&1"
+				}
+				Write-Verbose -Message "Installing VSCode Extension: $ext"
+				Invoke-Expression "code --install-extension $ext >`$null 2>&1"
+				if ($LASTEXITCODE -eq 0) {
+					Write-ColorText "{Blue}[extension] {Green}(success) {Gray}$ext"
+				} else {
+					Write-ColorText "{Blue}[extension] {Red}(failed) {Gray}$ext"
+				}
 			} else {
-				Write-ColorText "{Blue}[extension] {Red}(failed) {Gray}$ext"
+				Write-ColorText "{Blue}[extension] {Yellow}(exists) {Gray}$ext"
 			}
-		} else {
-			Write-ColorText "{Blue}[extension] {Yellow}(exists) {Gray}$ext"
 		}
 	}
 }
@@ -1045,66 +1422,77 @@ if (Get-Command code -ErrorAction SilentlyContinue) {
 ##########################################################################
 ###													CATPPUCCIN THEMES 								 				 ###
 ##########################################################################
-Write-TitleBox -Title "Per Application Catppuccin Themes Installation"
-# Catppuccin Themes
-$catppuccinThemes = @('Frappe', 'Latte', 'Macchiato', 'Mocha')
+if (Should-RunSection "Themes") {
+	Write-TitleBox -Title "Per Application Catppuccin Themes Installation"
+	# Catppuccin Themes
+	$catppuccinThemes = @('Frappe', 'Latte', 'Macchiato', 'Mocha')
 
-# FLowlauncher themes
-$flowLauncherDir = "$env:LOCALAPPDATA\FlowLauncher"
-if (Test-Path "$flowLauncherDir" -PathType Container) {
-	$flowLauncherThemeDir = Join-Path "$flowLauncherDir" -ChildPath "Themes"
-	$catppuccinThemes | ForEach-Object {
-		$themeFile = Join-Path "$flowLauncherThemeDir" -ChildPath "Catppuccin ${_}.xaml"
-		if (!(Test-Path "$themeFile" -PathType Leaf)) {
-			Write-Verbose "Adding file: $themeFile to $flowLauncherThemeDir."
-			Install-OnlineFile -OutputDir "$flowLauncherThemeDir" -Url "https://raw.githubusercontent.com/catppuccin/flow-launcher/refs/heads/main/themes/Catppuccin%20${_}.xaml"
-			if ($LASTEXITCODE -eq 0) {
-				Write-ColorText "{Blue}[theme] {Magenta}flowlauncher: {Green}(success) {Gray}$themeFile"
-			} else {
-				Write-ColorText "{Blue}[theme] {Magenta}flowlauncher: {Red}(failed) {Gray}$themeFile"
-			}
-		} else { Write-ColorText "{Blue}[theme] {Magenta}flowlauncher: {Yellow}(exists) {Gray}$themeFile" }
+	# FLowlauncher themes
+	$flowLauncherDir = "$env:LOCALAPPDATA\FlowLauncher"
+	if (Test-Path "$flowLauncherDir" -PathType Container) {
+		$flowLauncherThemeDir = Join-Path "$flowLauncherDir" -ChildPath "Themes"
+		$catppuccinThemes | ForEach-Object {
+			$themeFile = Join-Path "$flowLauncherThemeDir" -ChildPath "Catppuccin ${_}.xaml"
+			if ($Force -or !(Test-Path "$themeFile" -PathType Leaf)) {
+				if ($Force -and (Test-Path "$themeFile" -PathType Leaf)) {
+					Remove-Item "$themeFile" -Force -ErrorAction SilentlyContinue
+				}
+				Write-Verbose "Adding file: $themeFile to $flowLauncherThemeDir."
+				Install-OnlineFile -OutputDir "$themeFile" -Url "https://raw.githubusercontent.com/catppuccin/flow-launcher/refs/heads/main/themes/Catppuccin%20${_}.xaml"
+				if ($LASTEXITCODE -eq 0) {
+					Write-ColorText "{Blue}[theme] {Magenta}flowlauncher: {Green}(success) {Gray}$themeFile"
+				} else {
+					Write-ColorText "{Blue}[theme] {Magenta}flowlauncher: {Red}(failed) {Gray}$themeFile"
+				}
+			} else { Write-ColorText "{Blue}[theme] {Magenta}flowlauncher: {Yellow}(exists) {Gray}$themeFile" }
+		}
 	}
-}
 
-$catppuccinThemes = $catppuccinThemes.ToLower()
+	$catppuccinThemes = $catppuccinThemes.ToLower()
 
-# add btop theme
-# since we install btop by scoop, then the application folder would be in scoop directory
-$btopExists = Get-Command btop -ErrorAction SilentlyContinue
-if ($btopExists) {
-	if ($btopExists.Source | Select-String -SimpleMatch -CaseSensitive "scoop") {
-		$btopThemeDir = Join-Path (scoop prefix btop) -ChildPath "themes"
-	} else {
-		$btopThemeDir = Join-Path ($btopExists.Source | Split-Path) -ChildPath "themes"
+	# add btop theme
+	# since we install btop by scoop, then the application folder would be in scoop directory
+	$btopExists = Get-Command btop -ErrorAction SilentlyContinue
+	if ($btopExists) {
+		if ($btopExists.Source | Select-String -SimpleMatch -CaseSensitive "scoop") {
+			$btopThemeDir = Join-Path (scoop prefix btop) -ChildPath "themes"
+		} else {
+			$btopThemeDir = Join-Path ($btopExists.Source | Split-Path) -ChildPath "themes"
+		}
+		$catppuccinThemes | ForEach-Object {
+			$themeFile = Join-Path "$btopThemeDir" -ChildPath "catppuccin_${_}.theme"
+			if ($Force -or !(Test-Path "$themeFile" -PathType Leaf)) {
+				if ($Force -and (Test-Path "$themeFile" -PathType Leaf)) {
+					Remove-Item "$themeFile" -Force -ErrorAction SilentlyContinue
+				}
+				Write-Verbose "Adding file: $themeFile to $btopThemeDir."
+				Install-OnlineFile -OutputDir "$themeFile" -Url "https://raw.githubusercontent.com/catppuccin/btop/refs/heads/main/themes/catppuccin_${_}.theme"
+				if ($LASTEXITCODE -eq 0) {
+					Write-ColorText "{Blue}[theme] {Magenta}btop: {Green}(success) {Gray}$themeFile"
+				} else {
+					Write-ColorText "{Blue}[theme] {Magenta}btop: {Red}(failed) {Gray}$themeFile"
+				}
+			} else { Write-ColorText "{Blue}[theme] {Magenta}btop: {Yellow}(exists) {Gray}$themeFile" }
+		}
 	}
-	$catppuccinThemes | ForEach-Object {
-		$themeFile = Join-Path "$btopThemeDir" -ChildPath "catppuccin_${_}.theme"
-		if (!(Test-Path "$themeFile" -PathType Leaf)) {
-			Write-Verbose "Adding file: $themeFile to $btopThemeDir."
-			Install-OnlineFile -OutputDir "$btopThemeDir" -Url "https://raw.githubusercontent.com/catppuccin/btop/refs/heads/main/themes/catppuccin_${_}.theme"
-			if ($LASTEXITCODE -eq 0) {
-				Write-ColorText "{Blue}[theme] {Magenta}btop: {Green}(success) {Gray}$themeFile"
-			} else {
-				Write-ColorText "{Blue}[theme] {Magenta}btop: {Red}(failed) {Gray}$themeFile"
-			}
-		} else { Write-ColorText "{Blue}[theme] {Magenta}btop: {Yellow}(exists) {Gray}$themeFile" }
-	}
-}
 
-if ((Test-Path "C:\Program Files\Notepad++" -PathType Container) -or (Get-Command 'notepad++.exe' -ErrorAction SilentlyContinue)) {
-	$notepadPlusPlusThemeDir = Join-Path "C:\Program Files\Notepad++" -ChildPath "themes"
-	$catppuccinThemes | ForEach-Object {
-		$themeFile = Join-Path "$notepadPlusPlusThemeDir" -ChildPath "catppuccin-${_}.xml"
-		if (!(Test-Path "$themeFile" -PathType Leaf)) {
-			Write-Verbose "Adding file: $themeFile to $notepadPlusPlusThemeDir."
-			Install-OnlineFile -OutputDir "$notepadPlusPlusThemeDir" -Url "https://raw.githubusercontent.com/catppuccin/notepad-plus-plus/refs/heads/main/themes/catppuccin-${_}.xml"
-			if ($LASTEXITCODE -eq 0) {
-				Write-ColorText "{Blue}[theme] {Magenta}notepad++: {Green}(success) {Gray}$themeFile"
-			} else {
-				Write-ColorText "{Blue}[theme] {Magenta}notepad++: {Red}(failed) {Gray}$themeFile"
-			}
-		} else { Write-ColorText "{Blue}[theme] {Magenta}notepad++: {Yellow}(exists) {Gray}$themeFile" }
+	if ((Test-Path "C:\Program Files\Notepad++" -PathType Container) -or (Get-Command 'notepad++.exe' -ErrorAction SilentlyContinue)) {
+		$notepadPlusPlusThemeDir = Join-Path "C:\Program Files\Notepad++" -ChildPath "themes"
+		$catppuccinThemes | ForEach-Object {
+			$themeFile = Join-Path "$notepadPlusPlusThemeDir" -ChildPath "catppuccin-${_}.xml"
+			if ($Force -or !(Test-Path "$themeFile" -PathType Leaf)) {
+				if ($Force -and (Test-Path "$themeFile" -PathType Leaf)) {
+					Remove-Item "$themeFile" -Force -ErrorAction SilentlyContinue
+				}
+				Write-Verbose "Adding file: $themeFile to $notepadPlusPlusThemeDir."
+				Install-OnlineFile -OutputDir "$themeFile" -Url "https://raw.githubusercontent.com/catppuccin/notepad-plus-plus/refs/heads/main/themes/catppuccin-${_}.xml"
+				if ($LASTEXITCODE -eq 0) {
+					Write-ColorText "{Blue}[theme] {Magenta}notepad++: {Green}(success) {Gray}$themeFile"
+				} else {
+					Write-ColorText "{Blue}[theme] {Magenta}notepad++: {Red}(failed) {Gray}$themeFile"
+				}
+			} else { Write-ColorText "{Blue}[theme] {Magenta}notepad++: {Yellow}(exists) {Gray}$themeFile" }
+		}
 	}
 }
 
@@ -1112,83 +1500,90 @@ if ((Test-Path "C:\Program Files\Notepad++" -PathType Container) -or (Get-Comman
 ######################################################################
 ###														MISCELLANEOUS		 										 ###
 ######################################################################
-# yazi plugins
-Write-TitleBox "Miscellaneous"
-if (Get-Command ya -ErrorAction SilentlyContinue) {
-	Write-Verbose "Installing yazi plugins / themes"
-	ya pack -i >$null 2>&1
-	ya pack -u >$null 2>&1
-}
+if (Should-RunSection "Miscellaneous") {
+	# yazi plugins
+	Write-TitleBox "Miscellaneous"
+	if (Get-Command ya -ErrorAction SilentlyContinue) {
+		Write-Verbose "Installing yazi plugins / themes"
+		ya pack -i >$null 2>&1
+		ya pack -u >$null 2>&1
+	}
 
-# bat build theme
-if (Get-Command bat -ErrorAction SilentlyContinue) {
-	Write-Verbose "Building bat theme"
-	bat cache --clear
-	bat cache --build
+	# bat build theme
+	if (Get-Command bat -ErrorAction SilentlyContinue) {
+		Write-Verbose "Building bat theme"
+		if ($Force) {
+			bat cache --clear
+		}
+		bat cache --build
+	}
 }
 
 ##########################################################################
 ###													START KOMOREBI + YASB											 ###
 ##########################################################################
-Write-TitleBox "Komorebi & Yasb Engines"
+if (Should-RunSection "Komorebi") {
+	Write-TitleBox "Komorebi & Yasb Engines"
 
-# yasb
-if (Get-Command yasbc -ErrorAction SilentlyContinue) {
-	# if (!(Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.TaskName -match "yasb*" } )) {
-	# 	try { & yasbc.exe enable-autostart --task } catch { Write-Error "$_" }
-	# } else {
-	# 	$yasbTaskName = Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.TaskName -match "yasb*" } | Select-Object -ExpandProperty TaskName
-	# 	Write-Host "✅ Task: $yasbTaskName already created."
-	# }
-	if (!(Get-Process -Name yasb -ErrorAction SilentlyContinue)) {
-		try { & yasbc.exe start } catch { Write-Error "$_" }
-	} else {
-		Write-Host "✅ YASB Status Bar is already running."
-	}
-} else {
-	Write-Warning "Command not found: yasbc."
-}
-
-# komorebi
-if (Get-Command komorebic -ErrorAction SilentlyContinue) {
-	# Registry: Long path support for komorebi
-	# - https://lgug2z.github.io/komorebi/installation.html#installation
-
-	# $longPathPath = "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem"
-	# $longPathName = "LongPathsEnabled"
-	# $longPathValue = 1
-	# if ($null -eq $((Get-ItemProperty -Path $longPathPath -ErrorAction SilentlyContinue).LongPathsEnabled) -or ($(Get-ItemPropertyValue -Path $longPathPath -Name $longPathName -ErrorAction SilentlyContinue) -ne 1)) {
-	# 	Set-ItemProperty -Path $longPathPath -Name $longPathName -Value $longPathValue
-	# }
-
-	if (!(Get-Process -Name komorebi -ErrorAction SilentlyContinue)) {
-		$whkdExists = Get-Command whkd -ErrorAction SilentlyContinue
-		$whkdProcess = Get-Process -Name whkd -ErrorAction SilentlyContinue
-		# if ($whkdExists -and (!(Test-Path "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\komorebi.lnk"))) {
-		# 	try { Start-Process "powershell.exe" -ArgumentList "komorebic.exe", "enable-autostart", "--whkd" -WindowStyle Hidden -Wait }
-		# 	catch { Write-Error "$_" }
-		# } else {
-		# 	Write-Host "✅ Shortcut: komorebi.lnk created in shell:Startup."
-		# }
-		Write-Host "Starting Komorebi in the background..."
-		if ($whkdExists -and (!$whkdProcess)) {
-			try { Start-Process "powershell.exe" -ArgumentList "komorebic.exe", "start", "--whkd" -WindowStyle Hidden }
-			catch { Write-Error "$_" }
+	# yasb
+	if (Get-Command yasbc -ErrorAction SilentlyContinue) {
+		$yasbRunning = Get-Process -Name yasb -ErrorAction SilentlyContinue
+		if ($Force -or !$yasbRunning) {
+			if ($Force -and $yasbRunning) {
+				Write-ColorText "{Yellow}Force mode: Restarting YASB..."
+				& yasbc.exe stop 2>&1 | Out-Null
+				Start-Sleep -Seconds 1
+			}
+			try { & yasbc.exe start } catch { Write-Error "$_" }
+		} else {
+			Write-Host "✅ YASB Status Bar is already running."
 		}
 	} else {
-		Write-Host "✅ Komorebi Tiling Window Management is already running."
+		Write-Warning "Command not found: yasbc."
 	}
-} else {
-	Write-Warning "Command not found: komorebic."
+
+	# komorebi
+	if (Get-Command komorebic -ErrorAction SilentlyContinue) {
+		$komorebiRunning = Get-Process -Name komorebi -ErrorAction SilentlyContinue
+		if ($Force -or !$komorebiRunning) {
+			if ($Force -and $komorebiRunning) {
+				Write-ColorText "{Yellow}Force mode: Restarting Komorebi..."
+				& komorebic.exe stop 2>&1 | Out-Null
+				Start-Sleep -Seconds 1
+			}
+			$whkdExists = Get-Command whkd -ErrorAction SilentlyContinue
+			$whkdProcess = Get-Process -Name whkd -ErrorAction SilentlyContinue
+			Write-Host "Starting Komorebi in the background..."
+			if ($whkdExists -and (!$whkdProcess)) {
+				try { Start-Process "powershell.exe" -ArgumentList "komorebic.exe", "start", "--whkd" -WindowStyle Hidden }
+				catch { Write-Error "$_" }
+			} else {
+				try { Start-Process "powershell.exe" -ArgumentList "komorebic.exe", "start" -WindowStyle Hidden }
+				catch { Write-Error "$_" }
+			}
+		} else {
+			Write-Host "✅ Komorebi Tiling Window Management is already running."
+		}
+	} else {
+		Write-Warning "Command not found: komorebic."
+	}
 }
 
 
 ##############################################################################
 ###												WINDOWS SUBSYSTEMS FOR LINUX										 ###
 ##############################################################################
-if (!(Get-Command wsl -CommandType Application -ErrorAction Ignore)) {
-	Write-Verbose -Message "Installing Windows SubSystems for Linux..."
-	Start-Process -FilePath "PowerShell" -ArgumentList "wsl", "--install" -Verb RunAs -Wait -WindowStyle Hidden
+if (Should-RunSection "WSL") {
+	$wslInstalled = Get-Command wsl -CommandType Application -ErrorAction Ignore
+	if ($Force -or !$wslInstalled) {
+		if ($Force -and $wslInstalled) {
+			Write-ColorText "{Yellow}Force mode: Reinstalling WSL..."
+		}
+		Write-Verbose -Message "Installing Windows SubSystems for Linux..."
+		Start-Process -FilePath "PowerShell" -ArgumentList "wsl", "--install" -Verb RunAs -Wait -WindowStyle Hidden
+	} else {
+		Write-ColorText "{Blue}[wsl] {Yellow}(already installed)"
+	}
 }
 
 

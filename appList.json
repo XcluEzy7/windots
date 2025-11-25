@@ -3,11 +3,12 @@
 	// BEFORE RUNNING `Setup.ps` SCRIPT!! YOU CAN ADD OR REMOVE SPECIFIC SETTINGS BELOW:
 	"$schema": "https://raw.githubusercontent.com/jacquindev/windots/refs/heads/main/schema.json",
 	"environmentVariable": [
-		// Modify the below key-pair values according to your paths
-		{ "commandName": "eza", "environmentKey": "EZA_CONFIG_DIR", "environmentValue": "C:\\Users\\jqnhi\\.config\\eza" },
-		{ "commandName": "komorebic", "environmentKey": "KOMOREBI_CONFIG_HOME", "environmentValue": "C:\\Users\\jqnhi\\.config\\komorebi" },
-		{ "commandName": "yazi", "environmentKey": "YAZI_FILE_ONE", "environmentValue": "C:\\Program Files\\Git\\usr\\bin\\file.exe" },
-		{ "commandName": "yazi", "environmentKey": "YAZI_CONFIG_HOME", "environmentValue": "C:\\Users\\jqnhi\\.config\\yazi" },
+		// Environment variables will be automatically expanded (e.g., %USERPROFILE% -> C:\Users\username)
+		// No need to modify paths - they will adapt to each user automatically
+		{ "commandName": "eza", "environmentKey": "EZA_CONFIG_DIR", "environmentValue": "%USERPROFILE%\\.config\\eza" },
+		{ "commandName": "komorebic", "environmentKey": "KOMOREBI_CONFIG_HOME", "environmentValue": "%USERPROFILE%\\.config\\komorebi" },
+		{ "commandName": "yazi", "environmentKey": "YAZI_FILE_ONE", "environmentValue": "%ProgramFiles%\\Git\\usr\\bin\\file.exe" },
+		{ "commandName": "yazi", "environmentKey": "YAZI_CONFIG_HOME", "environmentValue": "%USERPROFILE%\\.config\\yazi" },
 		{ "commandName": "vagrant", "environmentKey": "VAGRANT_DEFAULT_PROVIDER", "environmentValue": "virtualbox" }
 	],
 	"installSource": {

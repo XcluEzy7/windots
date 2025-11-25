@@ -12,7 +12,7 @@ komorebi:
 bars:
   status-bar:
     enabled: true
-    screens: ['*']
+    screens: ['primary']
     class_name: "yasb-bar"
     alignment:
       position: "top"
@@ -37,7 +37,36 @@ bars:
     widgets:
       left: ["komorebi_workspaces", "komorebi_active_layout", "apps", "active_window"]
       center: ["clock"]
-      right: ["media", "wifi", "github", "language", "cpu", "memory", "weather", "volume", "power_menu"]
+      right: ["wifi", "github", "cpu", "memory", "weather", "volume", "power_menu"]
+  
+  status-bar-secondary:
+    enabled: true
+    screens: ['*']
+    class_name: "yasb-bar-secondary"
+    alignment:
+      position: "top"
+      center: false
+    blur_effect:
+      enabled: false
+      acrylic: false
+      dark_mode: false
+      round_corners: true
+      border_color: None
+    window_flags:
+      always_on_top: false
+      windows_app_bar: true
+    dimensions:
+      width: "100%"
+      height: 35
+    padding:
+      top: 5
+      left: 15
+      bottom: 5
+      right: 15
+    widgets:
+      left: ["komorebi_workspaces", "komorebi_active_layout"]
+      center: ["active_window"]
+      right: ["update"]
 
 widgets:
   win_button:
@@ -68,17 +97,17 @@ widgets:
         layouts: ['bsp', 'columns', 'rows', 'grid', 'vertical_stack', 'horizontal_stack', 'ultrawide_vertical_stack','right_main_vertical_stack']
         layout_icons:
           bsp: "BSP"
-          columns: "COLS"
-          rows: "ROWS"
-          grid: "GRID"
+          #columns: "COLS"
+          #rows: "ROWS"
+          #grid: "GRID"
           vertical_stack: "V-STACK"
           horizontal_stack: "H-STACK"
-          ultrawide_vertical_stack: "W-STACK"
-          right_main_vertical_stack: "RMV-STACK"
+          #ultrawide_vertical_stack: "W-STACK"
+          #right_main_vertical_stack: "RMV-STACK"
           monocle: "MONOCLE"
           maximised: "MAX"
-          floating: "FLOATING"
-          paused: "PAUSED"
+          #floating: "FLOATING"
+          #paused: "PAUSED"
         callbacks:
           on_left: 'next_layout'
           on_middle: 'toggle_monocle'
