@@ -218,6 +218,54 @@ w11dot-setup -VSCode -Force
 
 <br>
 
+<details>
+<summary><b>🤦 Note to Self(Git-Noob): The Submodule That Lives Its Own Life</b></summary>
+
+<br>
+
+> [!WARNING]
+> **Dear Future Me (and anyone else who stumbles upon this):**
+>
+> Yes, that `dotposh/Config/powershell-completions-collection` thing is a **submodule**. No, it's not broken. Yes, it will show as "modified content" in `git status` when it's in detached HEAD state (which is like 90% of the time because submodules are drama queens).
+>
+> **The Prayer Point to Fix Your Sanity:**
+> ```powershell
+> git submodule update --remote dotposh/Config/powershell-completions-collection
+> ```
+>
+> This updates the submodule to the latest commit from its remote repository. Think of it as giving the submodule a reality check and telling it "hey, you should probably sync with your remote friends."
+>
+> **When Things Go Sideways (Because They Will):**
+>
+> 1. **Submodule is in detached HEAD?** (You'll know because `git status` will yell at you)
+>   ```powershell
+>   cd dotposh/Config/powershell-completions-collection
+>   git checkout main  # or master, whatever branch it uses
+>   cd ../../..
+>   git add dotposh/Config/powershell-completions-collection
+>   git commit -m "update submodule because it was being difficult again"
+>   ```
+>
+> 2. **Want to update it to the latest?**
+>   ```powershell
+>   git submodule update --remote dotposh/Config/powershell-completions-collection
+>   git add dotposh/Config/powershell-completions-collection
+>   git commit -m "update powershell-completions-collection submodule"
+>   ```
+>
+> 3. **Cloned the repo and submodule is empty?**
+>   ```powershell
+>   git submodule update --init --recursive
+>   ```
+>
+> **Remember:** Submodules track specific commits, not branches. They're like that friend who always shows up at the exact commit you told them to, even if the world has moved on. You have to explicitly tell them to update. They won't do it themselves because they're too busy being... submodules.
+>
+> **TL;DR:** If `git status` shows the submodule as modified and you didn't change anything, just run `git submodule update --remote dotposh/Config/powershell-completions-collection` and commit the update. Your future self will thank you. Probably.
+
+</details>
+
+<br>
+
 <details open>
 <summary><b>⛏ Setup Development Tools with MISE <i>(mise-en-place)</i></b></summary>
 <br>
