@@ -86,7 +86,8 @@ if ($Env:DOTPOSH -and (Test-Path $Env:DOTPOSH)) {
     # Exclude modules that require missing dependencies
     $excludedModules = @(
         "Get-IPAddress.psm1",      # Requires: BurntToast
-        "Get-OrCreateSecret.psm1"   # Requires: Microsoft.PowerShell.SecretManagement
+        "Get-OrCreateSecret.psm1",
+        ""   # Requires: Microsoft.PowerShell.SecretManagement
     )
     foreach ($module in $((Get-ChildItem -Path "$env:DOTPOSH\Modules\*" -Include *.psm1 -ErrorAction SilentlyContinue).FullName)) {
         $moduleName = Split-Path $module -Leaf
@@ -107,9 +108,16 @@ if ($Env:DOTPOSH -and (Test-Path $Env:DOTPOSH)) {
         }
     }
     # Load completions
+    # Exclude completion scripts that require missing dependencies or are not needed
+    $global:ExcludedCompletions = @(
+        "npm.ps1",      # Exclude npm completions
+        "docker.ps1"    # Exclude docker completions
+    )
     if (Test-Path "$env:DOTPOSH\Config\powershell-completions-collection\exec.ps1" -PathType Leaf) {
         . "$env:DOTPOSH\Config\powershell-completions-collection\exec.ps1" -ErrorAction SilentlyContinue
     }
+    # Clean up the global variable after use
+    Remove-Variable -Name ExcludedCompletions -Scope Global -ErrorAction SilentlyContinue
 }
 
 # 🔧 Setup.ps1 Wrapper Function (Windots Enhancement)

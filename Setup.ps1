@@ -1287,51 +1287,124 @@ if (Should-RunSection "Symlinks") {
 	# symlinks
 	Write-TitleBox -Title "Add symbolic links for dotfiles"
 
-# Create PowerShell profile directory if it doesn't exist
-# Use the profile directory from CurrentUserAllHosts, but explicitly name it Microsoft.PowerShell_profile.ps1
-$powershellProfileDir = Split-Path $PROFILE.CurrentUserAllHosts
-$powershellProfilePath = Join-Path $powershellProfileDir "Microsoft.PowerShell_profile.ps1"
-if (!(Test-Path $powershellProfileDir)) {
-	New-Item $powershellProfileDir -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
-	Write-ColorText "{Blue}[directory] {Green}(created) {Gray}$powershellProfileDir"
-}
+# Create PowerShell profile symlinks for all user-specific profiles
+# This handles OneDrive redirection automatically since $PROFILE paths reflect the actual location
+Write-ColorText "{Blue}[symlink] {Gray}Setting up PowerShell profile symlinks..."
 
-# Create symlink for PowerShell Profile.ps1
 if (Test-Path "$PSScriptRoot\Profile.ps1") {
-	if (Test-Path $powershellProfilePath) {
-		$existingProfile = Get-Item $powershellProfilePath -ErrorAction SilentlyContinue
-		if ($existingProfile.LinkType -eq 'SymbolicLink') {
-			$targetPath = $existingProfile.Target
-			if ($targetPath -ne "$PSScriptRoot\Profile.ps1") {
-				# Wrong target, update it
-				Remove-Item $powershellProfilePath -Force -ErrorAction SilentlyContinue
-				New-Item -ItemType SymbolicLink -Path $powershellProfilePath -Target "$PSScriptRoot\Profile.ps1" -Force -ErrorAction SilentlyContinue | Out-Null
-				$script:setupSummary.Updated += "PowerShell Profile"
-				Write-ColorText "{Blue}[symlink] {Yellow}(updated) {Green}$PSScriptRoot\Profile.ps1 {Yellow}--> {Gray}$powershellProfilePath"
-			} else {
-				# Correct target, skip
-				$script:setupSummary.Exists += "PowerShell Profile"
-				Write-ColorText "{Blue}[symlink] {Yellow}(exists) {Gray}$powershellProfilePath"
+	# Get all PowerShell profile paths using $PROFILE object
+	# This automatically handles OneDrive redirection since $PROFILE uses the actual Documents path
+	$profilePaths = @()
+	
+	# PowerShell 7+ profiles (pwsh)
+	try {
+		$pwshProfile = $PROFILE
+		if ($pwshProfile -and $pwshProfile.CurrentUserAllHosts) {
+			$profileDir = Split-Path $pwshProfile.CurrentUserAllHosts
+			
+			# Current User, All Hosts (PowerShell 7)
+			$profilePaths += @{
+				Path = $pwshProfile.CurrentUserAllHosts
+				Name = "PowerShell 7 - CurrentUserAllHosts"
 			}
-		} else {
-			# Backup existing profile
-			if ($Force) {
-				$backupPath = "$powershellProfilePath.backup.$(Get-Date -Format 'yyyyMMdd-HHmmss')"
-				Write-ColorText "{Yellow}[symlink] {Gray}Backing up existing profile: $backupPath"
-				Copy-Item $powershellProfilePath $backupPath -Force -ErrorAction SilentlyContinue
-				Remove-Item $powershellProfilePath -Force -ErrorAction SilentlyContinue
-				New-Item -ItemType SymbolicLink -Path $powershellProfilePath -Target "$PSScriptRoot\Profile.ps1" -Force -ErrorAction SilentlyContinue | Out-Null
-				$script:setupSummary.Updated += "PowerShell Profile"
-				Write-ColorText "{Blue}[symlink] {Green}(created) {Green}$PSScriptRoot\Profile.ps1 {Yellow}--> {Gray}$powershellProfilePath"
-			} else {
-				$script:setupSummary.Skipped += "PowerShell Profile (exists as regular file, use -Force to replace)"
-				Write-ColorText "{Yellow}[symlink] {Gray}Skipped PowerShell Profile (exists, use -Force to replace)"
+			
+			# Explicitly add VSCode profile path (same directory, different filename)
+			# This ensures VSCode profile is created even when Setup.ps1 is run from a different host
+			$vscodeProfilePath = Join-Path $profileDir "Microsoft.VSCode_profile.ps1"
+			$profilePaths += @{
+				Path = $vscodeProfilePath
+				Name = "PowerShell 7 - Microsoft.VSCode_profile.ps1 (VSCode)"
+			}
+			
+			# Current User, Current Host (for the current host running Setup.ps1)
+			# Only add if it's different from the profiles we've already added (to avoid duplicates)
+			if ($pwshProfile.CurrentUserCurrentHost -and 
+				$pwshProfile.CurrentUserCurrentHost -ne $pwshProfile.CurrentUserAllHosts -and
+				$pwshProfile.CurrentUserCurrentHost -ne $vscodeProfilePath) {
+				$profilePaths += @{
+					Path = $pwshProfile.CurrentUserCurrentHost
+					Name = "PowerShell 7 - CurrentUserCurrentHost ($($Host.Name))"
+				}
 			}
 		}
-	} else {
-		New-Item -ItemType SymbolicLink -Path $powershellProfilePath -Target "$PSScriptRoot\Profile.ps1" -Force -ErrorAction SilentlyContinue | Out-Null
-		$script:setupSummary.Created += "PowerShell Profile"
-		Write-ColorText "{Blue}[symlink] {Green}(created) {Green}$PSScriptRoot\Profile.ps1 {Yellow}--> {Gray}$powershellProfilePath"
+	} catch {
+		Write-ColorText "{Yellow}[symlink] {Gray}PowerShell 7 profiles not available: $_"
+	}
+	
+	# Windows PowerShell 5.1 profiles
+	try {
+		# Check if we're in PowerShell 5.1 or if we need to check Windows PowerShell paths
+		$ps51Paths = @(
+			"$([Environment]::GetFolderPath('MyDocuments'))\WindowsPowerShell\Microsoft.PowerShell_profile.ps1",
+			"$([Environment]::GetFolderPath('MyDocuments'))\WindowsPowerShell\profile.ps1"
+		)
+		
+		foreach ($ps51Path in $ps51Paths) {
+			$profileDir = Split-Path $ps51Path
+			if (Test-Path $profileDir -PathType Container) {
+				$profilePaths += @{
+					Path = $ps51Path
+					Name = "Windows PowerShell 5.1 - $(Split-Path $ps51Path -Leaf)"
+				}
+			}
+		}
+	} catch {
+		Write-ColorText "{Yellow}[symlink] {Gray}Windows PowerShell 5.1 profiles check failed: $_"
+	}
+	
+	# Create symlinks for each profile path
+	foreach ($profileInfo in $profilePaths) {
+		$profilePath = $profileInfo.Path
+		$profileName = $profileInfo.Name
+		
+		# Ensure the directory exists
+		$profileDir = Split-Path $profilePath
+		if (!(Test-Path $profileDir)) {
+			New-Item $profileDir -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
+			Write-ColorText "{Blue}[directory] {Green}(created) {Gray}$profileDir"
+		}
+		
+		# Create or update symlink
+		if (Test-Path $profilePath) {
+			$existingProfile = Get-Item $profilePath -ErrorAction SilentlyContinue
+			if ($existingProfile.LinkType -eq 'SymbolicLink') {
+				$targetPath = $existingProfile.Target
+				if ($targetPath -ne "$PSScriptRoot\Profile.ps1") {
+					# Wrong target, update it
+					Remove-Item $profilePath -Force -ErrorAction SilentlyContinue
+					New-Item -ItemType SymbolicLink -Path $profilePath -Target "$PSScriptRoot\Profile.ps1" -Force -ErrorAction SilentlyContinue | Out-Null
+					$script:setupSummary.Updated += $profileName
+					Write-ColorText "{Blue}[symlink] {Yellow}(updated) {Green}$PSScriptRoot\Profile.ps1 {Yellow}--> {Gray}$profilePath {DarkGray}[$profileName]"
+				} else {
+					# Correct target, skip
+					$script:setupSummary.Exists += $profileName
+					Write-ColorText "{Blue}[symlink] {Yellow}(exists) {Gray}$profilePath {DarkGray}[$profileName]"
+				}
+			} else {
+				# Backup existing profile
+				if ($Force) {
+					$backupPath = "$profilePath.backup.$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+					Write-ColorText "{Yellow}[symlink] {Gray}Backing up existing profile: $backupPath"
+					Copy-Item $profilePath $backupPath -Force -ErrorAction SilentlyContinue
+					Remove-Item $profilePath -Force -ErrorAction SilentlyContinue
+					New-Item -ItemType SymbolicLink -Path $profilePath -Target "$PSScriptRoot\Profile.ps1" -Force -ErrorAction SilentlyContinue | Out-Null
+					$script:setupSummary.Updated += $profileName
+					Write-ColorText "{Blue}[symlink] {Green}(created) {Green}$PSScriptRoot\Profile.ps1 {Yellow}--> {Gray}$profilePath {DarkGray}[$profileName]"
+				} else {
+					$script:setupSummary.Skipped += "$profileName (exists as regular file, use -Force to replace)"
+					Write-ColorText "{Yellow}[symlink] {Gray}Skipped $profileName (exists, use -Force to replace)"
+				}
+			}
+		} else {
+			# Create new symlink
+			New-Item -ItemType SymbolicLink -Path $profilePath -Target "$PSScriptRoot\Profile.ps1" -Force -ErrorAction SilentlyContinue | Out-Null
+			$script:setupSummary.Created += $profileName
+			Write-ColorText "{Blue}[symlink] {Green}(created) {Green}$PSScriptRoot\Profile.ps1 {Yellow}--> {Gray}$profilePath {DarkGray}[$profileName]"
+		}
+	}
+	
+	if ($profilePaths.Count -eq 0) {
+		Write-ColorText "{Yellow}[symlink] {Gray}No PowerShell profiles found to link"
 	}
 } else {
 	$script:setupSummary.Failed += "PowerShell Profile (source not found)"
