@@ -2829,14 +2829,14 @@
 				"id": " - mpv",
 				"matching_strategy": "EndsWith"
 			}
+		],
+		"object_name_change": [
+			{
+				"kind": "Class",
+				"id": "mpv",
+				"matching_strategy": "Legacy"
+			}
 		]
-		//"object_name_change": [
-		//	{
-		//		"kind": "Class",
-		//		"id": "mpv",
-		//		"matching_strategy": "Legacy"
-		//	}
-		//]
 	},
 	"mpv.net": {
 		"object_name_change": [

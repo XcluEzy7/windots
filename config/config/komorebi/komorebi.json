@@ -10,8 +10,8 @@
 	"window_hiding_behaviour": "Cloak",
 	"cross_monitor_move_behaviour": "Insert",
 	"mouse_follows_focus": false,
-	"default_workspace_padding": 5,
-	"default_container_padding": 5,
+	"default_workspace_padding": 10,
+	"default_container_padding": 10,
 	"border": true,
 	"border_implementation": "Komorebi",
 	"border_width": 5,
@@ -80,23 +80,44 @@
 					"layout": "BSP"
 				},
 				{
-					"name": "2"
+					"name": "2",
+					"layout": "BSP"
 				},
 				{
 					"name": "3",
-					"layout": "UltrawideVerticalStack"
+					"layout": "BSP"
 				},
 				{
 					"name": "4",
-					"layout": "RightMainVerticalStack"
+					"layout": "BSP"
 				},
 				{
 					"name": "5",
-					"layout": "HorizontalStack"
+					"layout": "BSP"
 				},
 				{
 					"name": "6",
-					"layout": "Grid"
+					"layout": "BSP"
+				}
+			]
+		},
+		{
+			"workspaces": [
+				{
+					"name": "1",
+					"layout": "BSP"
+				},
+				{
+					"name": "2",
+					"layout": "BSP"
+				},
+				{
+					"name": "3",
+					"layout": "BSP"
+				},
+				{
+					"name": "4",
+					"layout": "BSP"
 				}
 			]
 		},
