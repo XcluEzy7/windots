@@ -12,7 +12,7 @@
 	url = https://github.com/sebthom/more-clink-completions.git
 [submodule "dotposh/Config/powershell-completions-collection"]
 	path = dotposh/Config/powershell-completions-collection
-	url = https://github.com/jacquindev/powershell-completions-collection.git
+	url = https://github.com/XcluEzy7/powershell-completions-collection.git
 [submodule "config/config/bash/git-bash-completions"]
 	path = config/config/bash/git-bash-completions
 	url = https://github.com/jacquindev/git-bash-completions.git
