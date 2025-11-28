@@ -106,6 +106,8 @@
 				{ "packageName": "terminal-icons" },
 				{ "packageName": "komorebi" },
 				{ "packageName": "whkd" },
+				{ "packageName": "bitwarden" },
+				{ "packageName": "sharex" },
 
 				// Git helpers
 				{ "packageName": "bfg" },
@@ -132,9 +134,10 @@
 				{ "packageName": "poppler" },
 				{ "packageName": "shfmt" },
 				{ "packageName": "speedtest-cli" },
-				//{ "packageName": "spicetify-cli" },
+				{ "packageName": "bitwarden-cli" },
 				//{ "packageName": "spotify-tui" },
 				{ "packageName": "starship" },
+				{ "packageName": "neovim" },
 
 				{ "packageName": "wget" },
 				{ "packageName": "yazi" },
@@ -183,8 +186,13 @@
 				// "Link-/gh-token",
 				// "seachicken/gh-poi",
 				"Shresht7/gh-license",
-				"yuler/gh-download"
+				"yuler/gh-download",
 				"yusukebe/gh-markdown-preview",
+				"gizmo385/gh-lazy",
+				"shuymn/gh-mcp"
+
+
+
 			],
 			"install": true
 		},
