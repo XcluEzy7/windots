@@ -18,13 +18,60 @@ if (!(Get-Command fzf -ErrorAction SilentlyContinue)) { return }
 # Catppuccin (syntax highlighting)
 # -----------------------------------------------------------------
 # Install Catppuccin PowerShell module if not already installed
-if (-not (Get-Module -ListAvailable -Name Catppuccin -ErrorAction SilentlyContinue)) {
-    Write-Host "Installing PowerShell Module Catppuccin..." -ForegroundColor "Green"
-    git clone "https://github.com/catppuccin/powershell.git" "$env:USERPROFILE\Documents\PowerShell\Modules\Catppuccin"
+$catppuccinModulePath = "$env:USERPROFILE\Documents\PowerShell\Modules\Catppuccin"
+$catppuccinInstalled = $false
+
+# Check if module is properly installed
+if (Get-Module -ListAvailable -Name Catppuccin -ErrorAction SilentlyContinue) {
+    $catppuccinInstalled = $true
+} elseif (Test-Path $catppuccinModulePath) {
+    # Directory exists, check if it's a valid module
+    $manifestPath = Join-Path $catppuccinModulePath "Catppuccin.psd1"
+    if (Test-Path $manifestPath) {
+        $catppuccinInstalled = $true
+    } else {
+        # Directory exists but isn't a valid module - remove it and reinstall
+        Write-Host "Removing invalid Catppuccin module directory..." -ForegroundColor "Yellow"
+        Remove-Item -Path $catppuccinModulePath -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
 
-# Import required Modules
-Import-Module Catppuccin
+if (-not $catppuccinInstalled) {
+    Write-Host "Installing PowerShell Module Catppuccin..." -ForegroundColor "Green"
+    try {
+        # Ensure parent directory exists
+        $modulesDir = Split-Path $catppuccinModulePath -Parent
+        if (-not (Test-Path $modulesDir)) {
+            New-Item -ItemType Directory -Path $modulesDir -Force | Out-Null
+        }
+        
+        # Clone the repository
+        git clone "https://github.com/catppuccin/powershell.git" $catppuccinModulePath
+        
+        # Verify installation
+        if (Test-Path (Join-Path $catppuccinModulePath "Catppuccin.psd1")) {
+            $catppuccinInstalled = $true
+            Write-Host "Catppuccin module installed successfully." -ForegroundColor "Green"
+        } else {
+            Write-Warning "Catppuccin module installation may have failed. Module manifest not found."
+        }
+    } catch {
+        Write-Warning "Failed to install Catppuccin module: $_"
+    }
+}
+
+# Import required Modules only if Catppuccin is available
+if ($catppuccinInstalled) {
+    try {
+        Import-Module Catppuccin -ErrorAction Stop
+    } catch {
+        Write-Warning "Failed to import Catppuccin module: $_"
+        return  # Exit early if Catppuccin can't be imported
+    }
+} else {
+    Write-Warning "Catppuccin module is not available. Skipping posh-readline configuration."
+    return  # Exit early if Catppuccin is not available
+}
 
 $Flavor = $Catppuccin['Mocha']
 

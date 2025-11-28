@@ -109,26 +109,6 @@
 				},
 				{
 					"name": "2",
-					"layout": "BSP"
-				},
-				{
-					"name": "3",
-					"layout": "BSP"
-				},
-				{
-					"name": "4",
-					"layout": "BSP"
-				}
-			]
-		},
-		{
-			"workspaces": [
-				{
-					"name": "1",
-					"layout": "BSP"
-				},
-				{
-					"name": "2",
 					"layout": "VerticalStack"
 				},
 				{

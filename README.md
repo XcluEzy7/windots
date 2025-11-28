@@ -111,6 +111,11 @@ cd `your_location`
 <h4>🌍 Dynamic Environment Variable Expansion <small><i>(v0.03)</i></small></h4>
 <h4>🚀 Global Access & Tab Completion <small><i>(v0.04)</i></small></h4>
 <h4>⚡ Quick re-install Command with w11dot-setup <small><i>(v0.05)</i></small></h4>
+<h4>🔬 Improved PowerShell Experimental Features Support <small><i>(v0.06)</i></small></h4>
+<h4>⚙️ PowerShell 5.1 Module Installation Support <small><i>(v0.07)</i></small></h4>
+
+> [!IMPORTANT]
+> **PowerShell Module Installation**: PowerShell modules from the PowerShell Gallery must be installed in **PowerShell 5.1** (Windows PowerShell), not PowerShell 7.x. The `Setup.ps1` script automatically handles this by delegating module installation to PowerShell 5.1 (`powershell.exe`) even when the script itself runs in PowerShell 7.x. This ensures modules are installed in the correct location and are available to both PowerShell versions.
 
 After the initial setup, `Setup.ps1` is automatically added to your PATH, allowing you to run it from anywhere in your terminal. The script also includes:
 - **Function wrapper**: Call `w11dot-setup` from anywhere (e.g., `w11dot-setup -Environment -Force`)
@@ -121,6 +126,8 @@ After the initial setup, `Setup.ps1` is automatically added to your PATH, allowi
 - **Automatic privilege escalation**: When running `w11dot-setup` commands, the function automatically uses `gsudo` to elevate privileges. A UAC prompt will appear - simply click "Yes" and the script will run with admin privileges. No need to manually open an elevated terminal!
 
 Environment variables in `appList.json` now automatically expand to user-specific paths. No need to manually edit hardcoded paths - use placeholders like `%USERPROFILE%` or `%ProgramFiles%` and they will be automatically resolved to the correct paths for each user during setup.
+
+PowerShell experimental features are now properly enabled with improved error handling and validation. The script correctly identifies feature names (e.g., `PSSubsystemPluginModel`), validates their existence before enabling, and provides clear warnings about PowerShell restart requirements. When `PSSubsystemPluginModel` is enabled, the script automatically attempts to install the `CompletionPredictor` module, with helpful guidance if a restart is required first.
 
 The setup script supports skip parameters to run only specific sections of the installation. This is useful for:
 - Reinstalling missing packages after issues

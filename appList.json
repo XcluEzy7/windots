@@ -22,7 +22,6 @@
 
 				// Must-haves
 				{ "packageId": "Microsoft.PowerShell" },
-				{ "packageId": "sharex.sharex" },
 				{ "packageId": "Microsoft.WindowsTerminal.Preview" },
 
 				// Shell supports
@@ -34,17 +33,17 @@
 				{ "packageId": "Python.Python.3.13" },
 
 				// Database
-				{ "packageId": "PostgreSQL.PostgreSQL" },
+				//{ "packageId": "PostgreSQL.PostgreSQL" },
 
 				// Development Tools
 				{ "packageId": "ImageMagick.ImageMagick" },
-				{ "packageId": "Postman.Postman" },
+				//{ "packageId": "Postman.Postman" },
 				//{ "packageId": "9NTRNFT9ZWS2" }, // LocalStack Desktop
 
 				// Editors
 				{ "packageId": "JetBrains.IntelliJIDEA.Community" },
 				{ "packageId": "Microsoft.VisualStudioCode" },
-				{ "packageId": "Cursor.Cursor" },
+				//{ "packageId": "Cursor.Cursor" },
 				{ "packageId": "Notepad++.Notepad++" },
 				{ "packageId": "Obsidian.Obsidian" },
 				{ "packageId": "LoftLabs.DevPod" }, // Client-Only Codespaces
@@ -57,7 +56,7 @@
 				{ "packageId": "RedHat.Podman-Desktop" },
 				{ "packageId": "Oracle.VirtualBox" },
 				{ "packageId": "Hashicorp.Vagrant" },
-				{ "packageId": "Canonical.MicroK8s" },
+				//{ "packageId": "Canonical.MicroK8s" },
 
 				// Paid services
 				//{ "packageId": "Symless.Synergy" },
@@ -66,10 +65,10 @@
 
 				// Windows Tweak Managers
 				{ "packageId": "AmN.yasb" },
-				{ "packageId": "LGUG2Z.komorebi" },
-				{ "packageId": "LGUG2Z.whkd" },
-				{ "packageId": "Rainmeter.Rainmeter" },
-				{ "packageId": "rocksdanister.LivelyWallpaper" }
+				//{ "packageId": "LGUG2Z.komorebi" },
+				//{ "packageId": "LGUG2Z.whkd" },
+				//{ "packageId": "Rainmeter.Rainmeter" },
+				//{ "packageId": "rocksdanister.LivelyWallpaper" }
 			],
 			"additionalArgs": ["--exact", "--silent", "--accept-package-agreements", "--accept-source-agreements"]
 		},
@@ -79,7 +78,8 @@
 				// add "packageVersion" field to install a specific version of a package, e.g.:
 				// { "packageName": "virtualbox", "packageVersion": "7.1.4" }
 				{ "packageName": "choco-cleaner" },
-				{ "packageName": "gpg4win" }
+				{ "packageName": "gpg4win" },
+				{ "packageName": "burnttoast-psmodule" }
 			],
 			"additionalArgs": ["-y", "-r", "--no-progress"]
 		},
@@ -100,6 +100,10 @@
 				// Scoop Extras
 				{ "packageName": "scoop-completion" },
 				{ "packageName": "scoop-search" },
+				{ "packageName": "dockercompletion" },
+				{ "packageName": "terminal-icons" },
+				{ "packageName": "komorebi" },
+				{ "packageName": "whkd" },
 
 				// Git helpers
 				{ "packageName": "bfg" },
@@ -126,8 +130,8 @@
 				{ "packageName": "poppler" },
 				{ "packageName": "shfmt" },
 				{ "packageName": "speedtest-cli" },
-				{ "packageName": "spicetify-cli" },
-				{ "packageName": "spotify-tui" },
+				//{ "packageName": "spicetify-cli" },
+				//{ "packageName": "spotify-tui" },
 				{ "packageName": "starship" },
 
 				{ "packageName": "wget" },
@@ -140,6 +144,8 @@
 				// { "packageName": "vfox" },
 				{ "packageName": "pnpm" },
 				{ "packageName": "uv" },
+				//{ "packageName": "nodejs-lts" },
+				{ "packageName": "nvm" },
 
 				// CI/CD tools
 				//{ "packageName": "aws" },
@@ -147,8 +153,9 @@
 				{ "packageName": "task" },
 				{ "packageName": "trivy" },
 				{ "packageName": "kubectl" },
-				{ "packageName": "wrangler" },
 				{ "packageName": "opentofu" },
+				{ "packageName": "microk8s" },
+				{ "packageName": "pskubectlcompletion" },
 
 				// Sysinternal Suites
 				{ "packageName": "process-explorer", "packageScope": "global" },
@@ -175,9 +182,9 @@
 				// "seachicken/gh-poi",
 				"Shresht7/gh-license",
 				"yuler/gh-download"
-				// "yusukebe/gh-markdown-preview",
+				"yusukebe/gh-markdown-preview",
 			],
-			"install": false
+			"install": true
 		},
 		{
 			"commandName": "vagrant",
@@ -208,7 +215,7 @@
 				"commitizen",
 				"cz-conventional-changelog"
 			],
-			"install": false
+			"install": true
 		}
 	],
 	"powershell": {
@@ -232,7 +239,7 @@
 				// { "moduleName": "PSScriptAnalyzer" },
 				// { "moduleName": "PSScriptTools" },
 				// { "moduleName": "PSToml" },
-				{ "moduleName": "Terminal-Icons" }
+				//{ "moduleName": "Terminal-Icons" }
 			],
 			"additionalArgs": ["-Scope", "CurrentUser", "-Force", "-AllowClobber"]
 		},
@@ -243,7 +250,7 @@
 			"enable": true,
 			"featureList": [
 				"PSNativeWindowsTildeExpansion",
-				"PSSubsystemPluginModule"
+				"PSSubsystemPluginModel"
 			]
 		}
 	}

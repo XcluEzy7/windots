@@ -275,244 +275,301 @@ function Install-ChocoApp {
 }
 
 function Initialize-PowerShellPrerequisites {
-	Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Gray}Initializing PowerShell prerequisites..."
+	Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Gray}Initializing PowerShell 5.1 prerequisites..."
 
-	# Enforce TLS 1.2 for secure connections to PowerShell Gallery
-	try {
-		[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-		Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}TLS 1.2 enforced"
-	} catch {
-		Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(warning) {Gray}Could not enforce TLS 1.2: $_"
-	}
+	# All prerequisites must be initialized in PowerShell 5.1 (Windows PowerShell)
+	# Build a comprehensive script to run in PowerShell 5.1
+	$prereqScript = @"
+# Enforce TLS 1.2 for secure connections to PowerShell Gallery
+try {
+	[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+	Write-Output 'TLS12:SUCCESS'
+} catch {
+	Write-Output "TLS12:ERROR:`$(`$_.Exception.Message)"
+}
 
-	# Register and trust PSGallery repository
-	# Note: PSGallery registration may fail if NuGet provider isn't installed yet
-	# We'll handle this gracefully and try again after NuGet is installed
-	$psGalleryRegistered = $false
-	try {
-		$psGallery = Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue
-		if (!$psGallery) {
-			# Try to register PSGallery - this may fail if NuGet provider isn't available yet
+# Register and trust PSGallery repository
+`$psGalleryRegistered = `$false
+try {
+	`$psGallery = Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue
+	if (!`$psGallery) {
+		# Try to register PSGallery
+		try {
+			Register-PSRepository -Default -ErrorAction Stop
+			`$psGalleryRegistered = `$true
+			Write-Output 'PSGALLERY:REGISTERED'
+		} catch {
 			try {
-				Register-PSRepository -Default -ErrorAction Stop
-				$psGalleryRegistered = $true
-				Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}PSGallery repository registered"
+				Register-PSRepository -Name PSGallery -SourceLocation 'https://www.powershellgallery.com/api/v2' -InstallationPolicy Trusted -ErrorAction Stop
+				`$psGalleryRegistered = `$true
+				Write-Output 'PSGALLERY:REGISTERED'
 			} catch {
-				# If -Default fails, try explicit registration
-				try {
-					Register-PSRepository -Name PSGallery -SourceLocation "https://www.powershellgallery.com/api/v2" -InstallationPolicy Trusted -ErrorAction Stop
-					$psGalleryRegistered = $true
-					Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}PSGallery repository registered"
-				} catch {
-					Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(warning) {Gray}PSGallery registration deferred (NuGet provider required first)"
-				}
-			}
-		} else {
-			$psGalleryRegistered = $true
-			Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(exists) {Gray}PSGallery repository"
-			
-			# Check if PSGallery is properly configured
-			if (!$psGallery.SourceLocation -or $psGallery.SourceLocation -eq '') {
-				# Re-register if misconfigured
-				try {
-					Unregister-PSRepository -Name PSGallery -ErrorAction SilentlyContinue
-					Register-PSRepository -Name PSGallery -SourceLocation "https://www.powershellgallery.com/api/v2" -InstallationPolicy Trusted -ErrorAction Stop
-					Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}PSGallery repository re-registered"
-				} catch {
-					Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(warning) {Gray}PSGallery re-registration deferred"
-				}
+				Write-Output "PSGALLERY:DEFERRED:`$(`$_.Exception.Message)"
 			}
 		}
-
-		# Set PSGallery as trusted (refresh the object first)
-		if ($psGalleryRegistered) {
-			$psGallery = Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue
-			if ($psGallery -and $psGallery.InstallationPolicy -ne 'Trusted') {
-				Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction Stop
-				Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}PSGallery set as trusted"
+	} else {
+		`$psGalleryRegistered = `$true
+		Write-Output 'PSGALLERY:EXISTS'
+		
+		# Check if PSGallery is properly configured
+		if (!`$psGallery.SourceLocation -or `$psGallery.SourceLocation -eq '') {
+			try {
+				Unregister-PSRepository -Name PSGallery -ErrorAction SilentlyContinue
+				Register-PSRepository -Name PSGallery -SourceLocation 'https://www.powershellgallery.com/api/v2' -InstallationPolicy Trusted -ErrorAction Stop
+				Write-Output 'PSGALLERY:REREGISTERED'
+			} catch {
+				Write-Output "PSGALLERY:REREGISTER_FAILED:`$(`$_.Exception.Message)"
 			}
 		}
-	} catch {
-		Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(warning) {Gray}PSGallery configuration: $_ (will retry after NuGet installation)"
 	}
 
-	# Install/Update NuGet provider (required for module installation)
+	# Set PSGallery as trusted
+	if (`$psGalleryRegistered) {
+		`$psGallery = Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue
+		if (`$psGallery -and `$psGallery.InstallationPolicy -ne 'Trusted') {
+			Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction Stop
+			Write-Output 'PSGALLERY:TRUSTED'
+		}
+	}
+} catch {
+	Write-Output "PSGALLERY:ERROR:`$(`$_.Exception.Message)"
+}
+"@
+
+	# Execute prerequisites script in PowerShell 5.1
+	$prereqResults = & powershell.exe -NoProfile -Command $prereqScript
+	
+	# Parse results
+	foreach ($result in $prereqResults) {
+		if ($result -match '^TLS12:') {
+			if ($result -eq 'TLS12:SUCCESS') {
+				Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}TLS 1.2 enforced (PowerShell 5.1)"
+			} else {
+				Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(warning) {Gray}Could not enforce TLS 1.2: $($result -replace 'TLS12:ERROR:', '')"
+			}
+		} elseif ($result -match '^PSGALLERY:') {
+			if ($result -eq 'PSGALLERY:REGISTERED') {
+				Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}PSGallery repository registered (PowerShell 5.1)"
+			} elseif ($result -eq 'PSGALLERY:EXISTS') {
+				Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(exists) {Gray}PSGallery repository (PowerShell 5.1)"
+			} elseif ($result -eq 'PSGALLERY:REREGISTERED') {
+				Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}PSGallery repository re-registered (PowerShell 5.1)"
+			} elseif ($result -eq 'PSGALLERY:TRUSTED') {
+				Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}PSGallery set as trusted (PowerShell 5.1)"
+			} elseif ($result -match '^PSGALLERY:DEFERRED:') {
+				Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(warning) {Gray}PSGallery registration deferred (NuGet provider required first): $($result -replace 'PSGALLERY:DEFERRED:', '')"
+			} elseif ($result -match '^PSGALLERY:') {
+				Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(warning) {Gray}PSGallery configuration: $($result -replace 'PSGALLERY:', '')"
+			}
+		}
+	}
+
+	# Install/Update NuGet provider in PowerShell 5.1 (required for module installation)
 	# Use manual bootstrap method since PowerShellGet may be broken
 	try {
-		$nugetProvider = Get-PackageProvider -Name NuGet -ListAvailable -ErrorAction SilentlyContinue | 
-			Where-Object { [version]$_.Version -ge [version]"2.8.5.201" } | 
-			Sort-Object Version -Descending | 
-			Select-Object -First 1
+		# Check NuGet provider in PowerShell 5.1
+		$nugetCheckScript = @"
+`$provider = Get-PackageProvider -Name NuGet -ListAvailable -ErrorAction SilentlyContinue | 
+	Where-Object { [version]`$_.Version -ge [version]'2.8.5.201' } | 
+	Sort-Object Version -Descending | 
+	Select-Object -First 1
+if (`$provider) {
+	Write-Output "EXISTS:`$(`$provider.Version)"
+} else {
+	Write-Output 'NOT_FOUND'
+}
+"@
+		
+		$nugetCheckResult = & powershell.exe -NoProfile -Command $nugetCheckScript
+		$nugetProvider = $null
+		if ($nugetCheckResult -match '^EXISTS:') {
+			$nugetVersion = $nugetCheckResult -replace 'EXISTS:', ''
+			$nugetProvider = @{ Version = $nugetVersion }
+		}
 
 		if (!$nugetProvider) {
-			Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Gray}Installing NuGet provider (minimum 2.8.5.201) via manual bootstrap..."
+			Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Gray}Installing NuGet provider (minimum 2.8.5.201) in PowerShell 5.1 via manual bootstrap..."
 			
 			$nugetInstalled = $false
 			
-			# Method 1: Try standard installation (may fail if PowerShellGet is broken)
+			# Method 1: Try standard installation in PowerShell 5.1 (may fail if PowerShellGet is broken)
+			$nugetInstallScript1 = @"
+try {
+	[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+	Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser -ErrorAction Stop | Out-Null
+	`$verify = Get-PackageProvider -Name NuGet -ListAvailable -ErrorAction SilentlyContinue | 
+		Where-Object { [version]`$_.Version -ge [version]'2.8.5.201' } | 
+		Select-Object -First 1
+	if (`$verify) {
+		Write-Output "SUCCESS:`$(`$verify.Version)"
+	} else {
+		Write-Output 'VERIFY_FAILED'
+	}
+} catch {
+	Write-Output "ERROR:`$(`$_.Exception.Message)"
+}
+"@
+			
 			try {
-				Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser -ErrorAction Stop | Out-Null
-				$nugetInstalled = $true
-				Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}NuGet provider installed via standard method"
+				$installResult1 = & powershell.exe -NoProfile -Command $nugetInstallScript1
+				if ($installResult1 -match '^SUCCESS:') {
+					$nugetInstalled = $true
+					$installedVersion = $installResult1 -replace 'SUCCESS:', ''
+					Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}NuGet provider $installedVersion installed via standard method (PowerShell 5.1)"
+				} elseif ($installResult1 -eq 'VERIFY_FAILED') {
+					throw "Installation completed but verification failed"
+				} else {
+					$errorMsg = $installResult1 -replace 'ERROR:', ''
+					Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(warning) {Gray}Standard installation failed, using manual bootstrap: $errorMsg"
+					throw $errorMsg
+				}
 			} catch {
-				Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(warning) {Gray}Standard installation failed, using manual bootstrap: $_"
 				
 				# Method 2: Manual bootstrap - download and install NuGet provider directly
+				# This runs in the current PowerShell 7.x context to download files, then installs in PowerShell 5.1
 				try {
-					# Temporarily bypass certificate validation for download
-					$originalCallback = [System.Net.ServicePointManager]::ServerCertificateValidationCallback
-					[System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+					# Primary method: Download and run the official NuGet provider installer
+					# This is the most reliable method when PowerShellGet is broken
+					Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Gray}Downloading NuGet provider installer..."
+					$nugetUrl = "https://oneget.org/nuget-2.8.5.201.exe"
+					$nugetInstaller = "$env:TEMP\nuget-installer.exe"
 					
-					try {
-						# Primary method: Download and run the official NuGet provider installer
-						# This is the most reliable method when PowerShellGet is broken
-						Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Gray}Downloading NuGet provider installer..."
-						$nugetUrl = "https://oneget.org/nuget-2.8.5.201.exe"
-						$nugetInstaller = "$env:TEMP\nuget-installer.exe"
+					Invoke-WebRequest -Uri $nugetUrl -OutFile $nugetInstaller -UseBasicParsing -ErrorAction Stop
+					
+					Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Gray}Installing NuGet provider in PowerShell 5.1 (this may take a moment)..."
+					$installProcess = Start-Process -FilePath $nugetInstaller -ArgumentList "/quiet" -Wait -NoNewWindow -PassThru
+					
+					if ($installProcess.ExitCode -eq 0 -or $installProcess.ExitCode -eq $null) {
+						# Give it a moment to register
+						Start-Sleep -Seconds 2
 						
-						Invoke-WebRequest -Uri $nugetUrl -OutFile $nugetInstaller -UseBasicParsing -ErrorAction Stop
+						# Verify installation in PowerShell 5.1
+						$verifyScript = @"
+`$verify = Get-PackageProvider -Name NuGet -ListAvailable -ErrorAction SilentlyContinue | 
+	Where-Object { [version]`$_.Version -ge [version]'2.8.5.201' } | 
+	Select-Object -First 1
+if (`$verify) {
+	Write-Output "SUCCESS:`$(`$verify.Version)"
+} else {
+	Write-Output 'VERIFY_FAILED'
+}
+"@
 						
-						Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Gray}Installing NuGet provider (this may take a moment)..."
-						$installProcess = Start-Process -FilePath $nugetInstaller -ArgumentList "/quiet" -Wait -NoNewWindow -PassThru
-						
-						if ($installProcess.ExitCode -eq 0 -or $installProcess.ExitCode -eq $null) {
-							# Give it a moment to register
-							Start-Sleep -Seconds 2
-							
-							# Reload PackageManagement to detect the new provider
-							Import-PackageProvider -Name NuGet -Force -ErrorAction SilentlyContinue | Out-Null
-							
-							# Verify installation
-							$verifyProvider = Get-PackageProvider -Name NuGet -ListAvailable -ErrorAction SilentlyContinue | 
-								Where-Object { [version]$_.Version -ge [version]"2.8.5.201" } | 
-								Select-Object -First 1
-							
-							if ($verifyProvider) {
-								$nugetInstalled = $true
-								Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}NuGet provider $($verifyProvider.Version) installed"
-							} else {
-								# Provider may need a PowerShell restart, but continue anyway
-								Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(warning) {Gray}NuGet provider installed but may require PowerShell restart to be fully available"
-								$nugetInstalled = $true
-							}
+						$verifyResult = & powershell.exe -NoProfile -Command $verifyScript
+						if ($verifyResult -match '^SUCCESS:') {
+							$nugetInstalled = $true
+							$installedVersion = $verifyResult -replace 'SUCCESS:', ''
+							Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}NuGet provider $installedVersion installed (PowerShell 5.1)"
 						} else {
-							throw "Installer exited with code $($installProcess.ExitCode)"
+							# Provider may need a PowerShell restart, but continue anyway
+							Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(warning) {Gray}NuGet provider installed but may require PowerShell 5.1 restart to be fully available"
+							$nugetInstalled = $true
+						}
+					} else {
+						throw "Installer exited with code $($installProcess.ExitCode)"
+					}
+					
+					# Clean up
+					Remove-Item $nugetInstaller -Force -ErrorAction SilentlyContinue
+				} catch {
+					# Fallback: Try downloading from PowerShell Gallery API directly
+					Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(warning) {Gray}Installer method failed, trying package download: $_"
+					try {
+						# Determine provider assemblies directory (shared location for both PS versions)
+						$providerPath = "$env:USERPROFILE\AppData\Local\PackageManagement\ProviderAssemblies"
+						$nugetProviderPath = Join-Path $providerPath "nuget"
+						
+						# Create directory if it doesn't exist
+						if (!(Test-Path $providerPath)) {
+							New-Item -ItemType Directory -Path $providerPath -Force | Out-Null
+						}
+						if (!(Test-Path $nugetProviderPath)) {
+							New-Item -ItemType Directory -Path $nugetProviderPath -Force | Out-Null
+						}
+						
+						# Download NuGet provider package
+						$nugetPackageUrl = "https://www.powershellgallery.com/api/v2/package/NuGet/2.8.5.201"
+						$nugetPackageZip = "$env:TEMP\nuget-provider.zip"
+						
+						Invoke-WebRequest -Uri $nugetPackageUrl -OutFile $nugetPackageZip -UseBasicParsing -ErrorAction Stop
+						Expand-Archive -Path $nugetPackageZip -DestinationPath "$env:TEMP\nuget-provider" -Force
+						
+						# Copy provider DLL
+						$extractedPath = "$env:TEMP\nuget-provider"
+						$providerDll = Get-ChildItem -Path $extractedPath -Recurse -Filter "Microsoft.PackageManagement.NuGetProvider.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
+						
+						if ($providerDll) {
+							Copy-Item -Path $providerDll.FullName -Destination $nugetProviderPath -Force
+							
+							# Verify in PowerShell 5.1
+							$verifyScript2 = @"
+Import-PackageProvider -Name NuGet -Force -ErrorAction SilentlyContinue | Out-Null
+`$verify = Get-PackageProvider -Name NuGet -ListAvailable -ErrorAction SilentlyContinue | 
+	Where-Object { [version]`$_.Version -ge [version]'2.8.5.201' } | 
+	Select-Object -First 1
+if (`$verify) {
+	Write-Output "SUCCESS:`$(`$verify.Version)"
+} else {
+	Write-Output 'VERIFY_FAILED'
+}
+"@
+							$verifyResult2 = & powershell.exe -NoProfile -Command $verifyScript2
+							if ($verifyResult2 -match '^SUCCESS:') {
+								$nugetInstalled = $true
+								$installedVersion2 = $verifyResult2 -replace 'SUCCESS:', ''
+								Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}NuGet provider $installedVersion2 installed via package download (PowerShell 5.1)"
+							}
 						}
 						
 						# Clean up
-						Remove-Item $nugetInstaller -Force -ErrorAction SilentlyContinue
+						Remove-Item $nugetPackageZip -Force -ErrorAction SilentlyContinue
+						Remove-Item $extractedPath -Recurse -Force -ErrorAction SilentlyContinue
 					} catch {
-						# Fallback: Try downloading from PowerShell Gallery API directly
-						Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(warning) {Gray}Installer method failed, trying package download: $_"
-						try {
-							# Determine provider assemblies directory
-							$providerPath = "$env:USERPROFILE\AppData\Local\PackageManagement\ProviderAssemblies"
-							$nugetProviderPath = Join-Path $providerPath "nuget"
-							
-							# Create directory if it doesn't exist
-							if (!(Test-Path $providerPath)) {
-								New-Item -ItemType Directory -Path $providerPath -Force | Out-Null
-							}
-							if (!(Test-Path $nugetProviderPath)) {
-								New-Item -ItemType Directory -Path $nugetProviderPath -Force | Out-Null
-							}
-							
-							# Download NuGet provider package
-							$nugetPackageUrl = "https://www.powershellgallery.com/api/v2/package/NuGet/2.8.5.201"
-							$nugetPackageZip = "$env:TEMP\nuget-provider.zip"
-							
-							Invoke-WebRequest -Uri $nugetPackageUrl -OutFile $nugetPackageZip -UseBasicParsing -ErrorAction Stop
-							Expand-Archive -Path $nugetPackageZip -DestinationPath "$env:TEMP\nuget-provider" -Force
-							
-							# Copy provider DLL
-							$extractedPath = "$env:TEMP\nuget-provider"
-							$providerDll = Get-ChildItem -Path $extractedPath -Recurse -Filter "Microsoft.PackageManagement.NuGetProvider.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
-							
-							if ($providerDll) {
-								Copy-Item -Path $providerDll.FullName -Destination $nugetProviderPath -Force
-								Import-PackageProvider -Name NuGet -Force -ErrorAction SilentlyContinue | Out-Null
-								$nugetInstalled = $true
-								Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}NuGet provider installed via package download"
-							}
-							
-							# Clean up
-							Remove-Item $nugetPackageZip -Force -ErrorAction SilentlyContinue
-							Remove-Item $extractedPath -Recurse -Force -ErrorAction SilentlyContinue
-						} catch {
-							throw "All bootstrap methods failed: $_"
-						}
-					} finally {
-						# Restore original certificate validation
-						[System.Net.ServicePointManager]::ServerCertificateValidationCallback = $originalCallback
+						throw "All bootstrap methods failed: $_"
 					}
-				} catch {
-					throw "Manual bootstrap failed: $_"
 				}
 			}
 			
 			if ($nugetInstalled) {
-				# Retry PSGallery registration now that NuGet is available
-				if (!$psGalleryRegistered) {
-					try {
-						$psGallery = Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue
-						if (!$psGallery) {
-							Register-PSRepository -Default -ErrorAction Stop
-							Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}PSGallery repository registered (after NuGet installation)"
-							Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction Stop
-							Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}PSGallery set as trusted"
-						}
-					} catch {
-						Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(warning) {Gray}PSGallery registration still failed: $_"
-					}
+				# Retry PSGallery registration in PowerShell 5.1 now that NuGet is available
+				$retryPSGalleryScript = @"
+try {
+	`$psGallery = Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue
+	if (!`$psGallery) {
+		Register-PSRepository -Default -ErrorAction Stop
+		Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction Stop
+		Write-Output 'PSGALLERY:REGISTERED'
+	} else {
+		Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction Stop
+		Write-Output 'PSGALLERY:TRUSTED'
+	}
+} catch {
+	Write-Output "PSGALLERY:ERROR:`$(`$_.Exception.Message)"
+}
+"@
+				$retryResult = & powershell.exe -NoProfile -Command $retryPSGalleryScript
+				if ($retryResult -eq 'PSGALLERY:REGISTERED') {
+					Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}PSGallery repository registered (after NuGet installation, PowerShell 5.1)"
+				} elseif ($retryResult -eq 'PSGALLERY:TRUSTED') {
+					Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}PSGallery set as trusted (PowerShell 5.1)"
+				} elseif ($retryResult -match '^PSGALLERY:ERROR:') {
+					$errorMsg = $retryResult -replace 'PSGALLERY:ERROR:', ''
+					Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(warning) {Gray}PSGallery registration still failed: $errorMsg"
 				}
 			} else {
 				throw "NuGet provider installation failed with all methods"
 			}
 		} else {
-			Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(exists) {Gray}NuGet provider $($nugetProvider.Version)"
+			Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(exists) {Gray}NuGet provider $($nugetProvider.Version) (PowerShell 5.1)"
 		}
 	} catch {
 		Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Red}(failed) {Gray}NuGet provider installation: $_"
 		$script:setupSummary.Failed += "PowerShell Prerequisite: NuGet provider"
 	}
 
-	# Update PackageManagement and PowerShellGet modules if needed
-	try {
-		Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Gray}Checking PackageManagement module..."
-		$packageMgmt = Get-Module -ListAvailable -Name PackageManagement | Sort-Object Version -Descending | Select-Object -First 1
-		if ($packageMgmt) {
-			Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(exists) {Gray}PackageManagement $($packageMgmt.Version)"
-		} else {
-			Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Gray}Installing PackageManagement module..."
-			Install-Module -Name PackageManagement -Force -Scope CurrentUser -AllowClobber -SkipPublisherCheck -ErrorAction Stop | Out-Null
-			Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}PackageManagement installed"
-		}
-	} catch {
-		Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(warning) {Gray}PackageManagement update: $_"
-	}
-
-	try {
-		Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Gray}Checking PowerShellGet module..."
-		$psGet = Get-Module -ListAvailable -Name PowerShellGet | Sort-Object Version -Descending | Select-Object -First 1
-		if ($psGet) {
-			Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(exists) {Gray}PowerShellGet $($psGet.Version)"
-		} else {
-			Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Gray}Installing PowerShellGet module..."
-			Install-Module -Name PowerShellGet -Force -Scope CurrentUser -AllowClobber -SkipPublisherCheck -ErrorAction Stop | Out-Null
-			Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}PowerShellGet installed"
-		}
-	} catch {
-		Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(warning) {Gray}PowerShellGet update: $_"
-	}
-
-	# Import PackageManagement and PowerShellGet to ensure they're available
-	try {
-		Import-PackageProvider -Name NuGet -Force -ErrorAction SilentlyContinue | Out-Null
-		Import-Module PackageManagement -Force -ErrorAction SilentlyContinue | Out-Null
-		Import-Module PowerShellGet -Force -ErrorAction SilentlyContinue | Out-Null
-	} catch {
-		Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(warning) {Gray}Module import: $_"
-	}
+	# Note: PackageManagement and PowerShellGet are built into PowerShell 5.1
+	# We don't need to install them separately - they're already available
+	Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Yellow}(info) {Gray}PackageManagement and PowerShellGet are built into PowerShell 5.1"
 
 	''
 }
@@ -520,47 +577,61 @@ function Initialize-PowerShellPrerequisites {
 function Install-PowerShellModule {
 	param ([string]$Module, [string]$Version, [array]$AdditionalArgs)
 
-	$moduleInstalled = Get-InstalledModule -Name $Module -ErrorAction SilentlyContinue
+	# Check if module is installed in PowerShell 5.1 (Windows PowerShell)
+	# Modules must be installed in PowerShell 5.1, not PowerShell 7.x
+	$ps51CheckScript = @"
+`$module = Get-InstalledModule -Name '$Module' -ErrorAction SilentlyContinue
+if (`$module) { Write-Output 'INSTALLED' } else { Write-Output 'NOT_INSTALLED' }
+"@
+	
+	$checkResult = & powershell.exe -NoProfile -Command $ps51CheckScript
+	$moduleInstalled = ($checkResult -eq 'INSTALLED')
+
 	if (!$moduleInstalled) {
 		try {
-			$installParams = @{
-				Name = $Module
-				Scope = 'CurrentUser'
-				Force = $true
-				AllowClobber = $true
-				SkipPublisherCheck = $true
-				ErrorAction = 'Stop'
-			}
-
+			# Build Install-Module command for PowerShell 5.1
+			$installCmd = "Install-Module -Name '$Module' -Scope CurrentUser -Force -AllowClobber -SkipPublisherCheck -ErrorAction Stop"
+			
 			if ($null -ne $Version) {
-				$installParams['RequiredVersion'] = $Version
+				$installCmd += " -RequiredVersion '$Version'"
 			}
 
 			# Add additional arguments if provided
 			if ($AdditionalArgs.Count -ge 1) {
-				# Parse additional args and add to installParams
 				for ($i = 0; $i -lt $AdditionalArgs.Count; $i++) {
 					if ($AdditionalArgs[$i] -match '^-') {
 						$paramName = $AdditionalArgs[$i].TrimStart('-')
 						if ($i + 1 -lt $AdditionalArgs.Count -and $AdditionalArgs[$i + 1] -notmatch '^-') {
 							$paramValue = $AdditionalArgs[$i + 1]
-							$installParams[$paramName] = $paramValue
+							$installCmd += " -$paramName '$paramValue'"
 							$i++
 						} else {
-							$installParams[$paramName] = $true
+							$installCmd += " -$paramName"
 						}
 					}
 				}
 			}
 
-			Install-Module @installParams
+			# Execute installation in PowerShell 5.1
+			$installScript = @"
+try {
+	[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+	$installCmd
+	`$verify = Get-InstalledModule -Name '$Module' -ErrorAction SilentlyContinue
+	if (`$verify) { Write-Output 'SUCCESS' } else { Write-Output 'VERIFY_FAILED' }
+} catch {
+	Write-Output "ERROR: `$(`$_.Exception.Message)"
+}
+"@
 			
-			# Verify installation
-			$verifyModule = Get-InstalledModule -Name $Module -ErrorAction SilentlyContinue
-			if ($verifyModule) {
-				Write-ColorText "{Blue}[module] {Magenta}pwsh: {Green}(success) {Gray}$Module"
-			} else {
+			$installResult = & powershell.exe -NoProfile -Command $installScript
+			
+			if ($installResult -eq 'SUCCESS') {
+				Write-ColorText "{Blue}[module] {Magenta}pwsh: {Green}(success) {Gray}$Module {DarkGray}(installed in PowerShell 5.1)"
+			} elseif ($installResult -eq 'VERIFY_FAILED') {
 				throw "Module installation completed but verification failed"
+			} else {
+				throw $installResult
 			}
 		} catch {
 			Write-ColorText "{Blue}[module] {Magenta}pwsh: {Red}(failed) {Gray}$Module {DarkGray}Error: $_"
@@ -569,17 +640,10 @@ function Install-PowerShellModule {
 	} elseif ($Force) {
 		# Force reinstall
 		try {
-			$installParams = @{
-				Name = $Module
-				Scope = 'CurrentUser'
-				Force = $true
-				AllowClobber = $true
-				SkipPublisherCheck = $true
-				ErrorAction = 'Stop'
-			}
-
+			$installCmd = "Install-Module -Name '$Module' -Scope CurrentUser -Force -AllowClobber -SkipPublisherCheck -ErrorAction Stop"
+			
 			if ($null -ne $Version) {
-				$installParams['RequiredVersion'] = $Version
+				$installCmd += " -RequiredVersion '$Version'"
 			}
 
 			# Add additional arguments if provided
@@ -589,30 +653,42 @@ function Install-PowerShellModule {
 						$paramName = $AdditionalArgs[$i].TrimStart('-')
 						if ($i + 1 -lt $AdditionalArgs.Count -and $AdditionalArgs[$i + 1] -notmatch '^-') {
 							$paramValue = $AdditionalArgs[$i + 1]
-							$installParams[$paramName] = $paramValue
+							$installCmd += " -$paramName '$paramValue'"
 							$i++
 						} else {
-							$installParams[$paramName] = $true
+							$installCmd += " -$paramName"
 						}
 					}
 				}
 			}
 
-			Install-Module @installParams
+			# Execute reinstallation in PowerShell 5.1
+			$reinstallScript = @"
+try {
+	[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+	$installCmd
+	`$verify = Get-InstalledModule -Name '$Module' -ErrorAction SilentlyContinue
+	if (`$verify) { Write-Output 'SUCCESS' } else { Write-Output 'VERIFY_FAILED' }
+} catch {
+	Write-Output "ERROR: `$(`$_.Exception.Message)"
+}
+"@
 			
-			# Verify installation
-			$verifyModule = Get-InstalledModule -Name $Module -ErrorAction SilentlyContinue
-			if ($verifyModule) {
-				Write-ColorText "{Blue}[module] {Magenta}pwsh: {Green}(reinstalled) {Gray}$Module"
-			} else {
+			$reinstallResult = & powershell.exe -NoProfile -Command $reinstallScript
+			
+			if ($reinstallResult -eq 'SUCCESS') {
+				Write-ColorText "{Blue}[module] {Magenta}pwsh: {Green}(reinstalled) {Gray}$Module {DarkGray}(installed in PowerShell 5.1)"
+			} elseif ($reinstallResult -eq 'VERIFY_FAILED') {
 				throw "Module reinstallation completed but verification failed"
+			} else {
+				throw $reinstallResult
 			}
 		} catch {
 			Write-ColorText "{Blue}[module] {Magenta}pwsh: {Red}(failed) {Gray}$Module {DarkGray}Error: $_"
 			$script:setupSummary.Failed += "PowerShell Module: $Module"
 		}
 	} else {
-		Write-ColorText "{Blue}[module] {Magenta}pwsh: {Yellow}(exists) {Gray}$Module"
+		Write-ColorText "{Blue}[module] {Magenta}pwsh: {Yellow}(exists) {Gray}$Module {DarkGray}(in PowerShell 5.1)"
 	}
 }
 
@@ -1146,8 +1222,9 @@ if ($moduleInstall -eq $True) {
 }
 
 # Install PowerShell modules required by Profile.ps1
+# Note: These modules are installed in PowerShell 5.1, not PowerShell 7.x
 # Commented out due to installation failures (NuGet provider issue):
-Write-ColorText "{Blue}[module] {Magenta}pwsh: {Gray}Installing profile-required modules..."
+Write-ColorText "{Blue}[module] {Magenta}pwsh: {Gray}Installing profile-required modules (PowerShell 5.1)..."
 $profileRequiredModules = @(
 	# "BurntToast",
 	# "Microsoft.PowerShell.SecretManagement",
@@ -1158,17 +1235,43 @@ $profileRequiredModules = @(
 )
 
 foreach ($module in $profileRequiredModules) {
-	$moduleInstalled = Get-Module -ListAvailable -Name $module -ErrorAction SilentlyContinue
+	# Check if module is installed in PowerShell 5.1
+	$checkScript = @"
+`$module = Get-InstalledModule -Name '$module' -ErrorAction SilentlyContinue
+if (`$module) { Write-Output 'INSTALLED' } else { Write-Output 'NOT_INSTALLED' }
+"@
+	
+	$checkResult = & powershell.exe -NoProfile -Command $checkScript
+	$moduleInstalled = ($checkResult -eq 'INSTALLED')
+	
 	if ($Force -or !$moduleInstalled) {
 		try {
-			Install-Module -Name $module -Scope CurrentUser -Force -AllowClobber -SkipPublisherCheck -ErrorAction Stop
-			Write-ColorText "{Blue}[module] {Magenta}pwsh: {Green}(success) {Gray}$module"
+			$installScript = @"
+try {
+	[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+	Install-Module -Name '$module' -Scope CurrentUser -Force -AllowClobber -SkipPublisherCheck -ErrorAction Stop
+	`$verify = Get-InstalledModule -Name '$module' -ErrorAction SilentlyContinue
+	if (`$verify) { Write-Output 'SUCCESS' } else { Write-Output 'VERIFY_FAILED' }
+} catch {
+	Write-Output "ERROR:`$(`$_.Exception.Message)"
+}
+"@
+			$installResult = & powershell.exe -NoProfile -Command $installScript
+			
+			if ($installResult -eq 'SUCCESS') {
+				Write-ColorText "{Blue}[module] {Magenta}pwsh: {Green}(success) {Gray}$module {DarkGray}(installed in PowerShell 5.1)"
+			} elseif ($installResult -eq 'VERIFY_FAILED') {
+				throw "Module installation completed but verification failed"
+			} else {
+				$errorMsg = $installResult -replace 'ERROR:', ''
+				throw $errorMsg
+			}
 		} catch {
 			Write-ColorText "{Blue}[module] {Magenta}pwsh: {Red}(failed) {Gray}$module {DarkGray}Error: $_"
 			$script:setupSummary.Failed += "PowerShell Module: $module"
 		}
 	} else {
-		Write-ColorText "{Blue}[module] {Magenta}pwsh: {Yellow}(exists) {Gray}$module"
+		Write-ColorText "{Blue}[module] {Magenta}pwsh: {Yellow}(exists) {Gray}$module {DarkGray}(in PowerShell 5.1)"
 	}
 }
 Refresh ($i++)
@@ -1182,17 +1285,54 @@ if ($featureEnable -eq $True) {
 	if (!(Get-Command Get-ExperimentalFeature -ErrorAction SilentlyContinue)) { return }
 
 	''
+	$featuresEnabled = @()
 	foreach ($f in $featureList) {
 		$featureExists = Get-ExperimentalFeature -Name $f -ErrorAction SilentlyContinue
-		if ($Force -or ($featureExists -and ($featureExists.Enabled -eq $False))) {
-			Enable-ExperimentalFeature -Name $f -Scope CurrentUser -ErrorAction SilentlyContinue
-			if ($LASTEXITCODE -eq 0) {
-				Write-ColorText "{Blue}[experimental feature] {Magenta}pwsh: {Green}(success) {Gray}$f"
-			} else {
-				Write-ColorText "{Blue}[experimental feature] {Magenta}pwsh: {Red}(failed) {Gray}$f"
+		if ($null -eq $featureExists) {
+			Write-ColorText "{Blue}[experimental feature] {Magenta}pwsh: {Red}(not found) {Gray}$f"
+			continue
+		}
+		
+		if ($Force -or ($featureExists.Enabled -eq $False)) {
+			try {
+				$result = Enable-ExperimentalFeature -Name $f -Scope CurrentUser -ErrorAction Stop
+				if ($result.Enabled -eq $True) {
+					Write-ColorText "{Blue}[experimental feature] {Magenta}pwsh: {Green}(success) {Gray}$f"
+					$featuresEnabled += $f
+				} else {
+					Write-ColorText "{Blue}[experimental feature] {Magenta}pwsh: {Yellow}(pending) {Gray}$f {DarkGray}(restart required)"
+					$featuresEnabled += $f
+				}
+			} catch {
+				Write-ColorText "{Blue}[experimental feature] {Magenta}pwsh: {Red}(failed) {Gray}$f {DarkGray}Error: $_"
+				$script:setupSummary.Failed += "PowerShell Experimental Feature: $f"
 			}
 		} else {
 			Write-ColorText "{Blue}[experimental feature] {Magenta}pwsh: {Yellow}(enabled) {Gray}$f"
+		}
+	}
+
+	if ($featuresEnabled.Count -gt 0) {
+		Write-ColorText "{Yellow}[!] {Gray}PowerShell restart required for experimental features to take effect: {Cyan}$($featuresEnabled -join ', ')"
+		Write-ColorText "{Yellow}[!] {Gray}After restart, you may need to install dependent modules (e.g., CompletionPredictor for PSSubsystemPluginModel)"
+		
+		# Attempt to install CompletionPredictor if PSSubsystemPluginModel was enabled
+		# Note: This may fail until PowerShell is restarted, which is expected
+		if ($featuresEnabled -contains "PSSubsystemPluginModel") {
+			''
+			Write-ColorText "{Blue}[module] {Magenta}pwsh: {Gray}Attempting to install CompletionPredictor (may require restart first)..."
+			$completionPredictorInstalled = Get-Module -ListAvailable -Name "CompletionPredictor" -ErrorAction SilentlyContinue
+			if ($Force -or !$completionPredictorInstalled) {
+				try {
+					Install-Module -Name "CompletionPredictor" -Scope CurrentUser -Force -AllowClobber -SkipPublisherCheck -ErrorAction Stop
+					Write-ColorText "{Blue}[module] {Magenta}pwsh: {Green}(success) {Gray}CompletionPredictor"
+				} catch {
+					Write-ColorText "{Blue}[module] {Magenta}pwsh: {Yellow}(skipped) {Gray}CompletionPredictor {DarkGray}(Install after PowerShell restart)"
+					Write-ColorText "{DarkGray}   Run: Install-Module -Name CompletionPredictor"
+				}
+			} else {
+				Write-ColorText "{Blue}[module] {Magenta}pwsh: {Yellow}(exists) {Gray}CompletionPredictor"
+			}
 		}
 	}
 
@@ -1291,12 +1431,17 @@ if (Should-RunSection "Symlinks") {
 # This handles OneDrive redirection automatically since $PROFILE paths reflect the actual location
 Write-ColorText "{Blue}[symlink] {Gray}Setting up PowerShell profile symlinks..."
 
-if (Test-Path "$PSScriptRoot\Profile.ps1") {
-	# Get all PowerShell profile paths using $PROFILE object
-	# This automatically handles OneDrive redirection since $PROFILE uses the actual Documents path
-	$profilePaths = @()
-	
-	# PowerShell 7+ profiles (pwsh)
+# PowerShell Profile Symlinks - Separate handling for PowerShell 7.x and 5.1
+# PowerShell 7.x profiles link to pwsh/Profile.ps1
+# PowerShell 5.1 profiles link to powershell/WindowsProfile.ps1
+
+$pwshProfileSource = "$PSScriptRoot\pwsh\Profile.ps1"
+$ps51ProfileSource = "$PSScriptRoot\powershell\WindowsProfile.ps1"
+
+$profilePaths = @()
+
+# PowerShell 7+ profiles (pwsh) - Link to pwsh/Profile.ps1
+if (Test-Path $pwshProfileSource) {
 	try {
 		$pwshProfile = $PROFILE
 		if ($pwshProfile -and $pwshProfile.CurrentUserAllHosts) {
@@ -1306,6 +1451,7 @@ if (Test-Path "$PSScriptRoot\Profile.ps1") {
 			$profilePaths += @{
 				Path = $pwshProfile.CurrentUserAllHosts
 				Name = "PowerShell 7 - CurrentUserAllHosts"
+				Source = $pwshProfileSource
 			}
 			
 			# Explicitly add VSCode profile path (same directory, different filename)
@@ -1314,6 +1460,7 @@ if (Test-Path "$PSScriptRoot\Profile.ps1") {
 			$profilePaths += @{
 				Path = $vscodeProfilePath
 				Name = "PowerShell 7 - Microsoft.VSCode_profile.ps1 (VSCode)"
+				Source = $pwshProfileSource
 			}
 			
 			# Current User, Current Host (for the current host running Setup.ps1)
@@ -1324,14 +1471,19 @@ if (Test-Path "$PSScriptRoot\Profile.ps1") {
 				$profilePaths += @{
 					Path = $pwshProfile.CurrentUserCurrentHost
 					Name = "PowerShell 7 - CurrentUserCurrentHost ($($Host.Name))"
+					Source = $pwshProfileSource
 				}
 			}
 		}
 	} catch {
 		Write-ColorText "{Yellow}[symlink] {Gray}PowerShell 7 profiles not available: $_"
 	}
-	
-	# Windows PowerShell 5.1 profiles
+} else {
+	Write-ColorText "{Yellow}[symlink] {Gray}PowerShell 7 profile source not found: $pwshProfileSource"
+}
+
+# Windows PowerShell 5.1 profiles - Link to powershell/WindowsProfile.ps1
+if (Test-Path $ps51ProfileSource) {
 	try {
 		# Check if we're in PowerShell 5.1 or if we need to check Windows PowerShell paths
 		$ps51Paths = @(
@@ -1345,70 +1497,71 @@ if (Test-Path "$PSScriptRoot\Profile.ps1") {
 				$profilePaths += @{
 					Path = $ps51Path
 					Name = "Windows PowerShell 5.1 - $(Split-Path $ps51Path -Leaf)"
+					Source = $ps51ProfileSource
 				}
 			}
 		}
 	} catch {
 		Write-ColorText "{Yellow}[symlink] {Gray}Windows PowerShell 5.1 profiles check failed: $_"
 	}
+} else {
+	Write-ColorText "{Yellow}[symlink] {Gray}PowerShell 5.1 profile source not found: $ps51ProfileSource"
+}
+
+# Create symlinks for each profile path
+foreach ($profileInfo in $profilePaths) {
+	$profilePath = $profileInfo.Path
+	$profileName = $profileInfo.Name
+	$sourcePath = $profileInfo.Source
 	
-	# Create symlinks for each profile path
-	foreach ($profileInfo in $profilePaths) {
-		$profilePath = $profileInfo.Path
-		$profileName = $profileInfo.Name
-		
-		# Ensure the directory exists
-		$profileDir = Split-Path $profilePath
-		if (!(Test-Path $profileDir)) {
-			New-Item $profileDir -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
-			Write-ColorText "{Blue}[directory] {Green}(created) {Gray}$profileDir"
-		}
-		
-		# Create or update symlink
-		if (Test-Path $profilePath) {
-			$existingProfile = Get-Item $profilePath -ErrorAction SilentlyContinue
-			if ($existingProfile.LinkType -eq 'SymbolicLink') {
-				$targetPath = $existingProfile.Target
-				if ($targetPath -ne "$PSScriptRoot\Profile.ps1") {
-					# Wrong target, update it
-					Remove-Item $profilePath -Force -ErrorAction SilentlyContinue
-					New-Item -ItemType SymbolicLink -Path $profilePath -Target "$PSScriptRoot\Profile.ps1" -Force -ErrorAction SilentlyContinue | Out-Null
-					$script:setupSummary.Updated += $profileName
-					Write-ColorText "{Blue}[symlink] {Yellow}(updated) {Green}$PSScriptRoot\Profile.ps1 {Yellow}--> {Gray}$profilePath {DarkGray}[$profileName]"
-				} else {
-					# Correct target, skip
-					$script:setupSummary.Exists += $profileName
-					Write-ColorText "{Blue}[symlink] {Yellow}(exists) {Gray}$profilePath {DarkGray}[$profileName]"
-				}
+	# Ensure the directory exists
+	$profileDir = Split-Path $profilePath
+	if (!(Test-Path $profileDir)) {
+		New-Item $profileDir -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
+		Write-ColorText "{Blue}[directory] {Green}(created) {Gray}$profileDir"
+	}
+	
+	# Create or update symlink
+	if (Test-Path $profilePath) {
+		$existingProfile = Get-Item $profilePath -ErrorAction SilentlyContinue
+		if ($existingProfile.LinkType -eq 'SymbolicLink') {
+			$targetPath = $existingProfile.Target
+			if ($targetPath -ne $sourcePath) {
+				# Wrong target, update it
+				Remove-Item $profilePath -Force -ErrorAction SilentlyContinue
+				New-Item -ItemType SymbolicLink -Path $profilePath -Target $sourcePath -Force -ErrorAction SilentlyContinue | Out-Null
+				$script:setupSummary.Updated += $profileName
+				Write-ColorText "{Blue}[symlink] {Yellow}(updated) {Green}$sourcePath {Yellow}--> {Gray}$profilePath {DarkGray}[$profileName]"
 			} else {
-				# Backup existing profile
-				if ($Force) {
-					$backupPath = "$profilePath.backup.$(Get-Date -Format 'yyyyMMdd-HHmmss')"
-					Write-ColorText "{Yellow}[symlink] {Gray}Backing up existing profile: $backupPath"
-					Copy-Item $profilePath $backupPath -Force -ErrorAction SilentlyContinue
-					Remove-Item $profilePath -Force -ErrorAction SilentlyContinue
-					New-Item -ItemType SymbolicLink -Path $profilePath -Target "$PSScriptRoot\Profile.ps1" -Force -ErrorAction SilentlyContinue | Out-Null
-					$script:setupSummary.Updated += $profileName
-					Write-ColorText "{Blue}[symlink] {Green}(created) {Green}$PSScriptRoot\Profile.ps1 {Yellow}--> {Gray}$profilePath {DarkGray}[$profileName]"
-				} else {
-					$script:setupSummary.Skipped += "$profileName (exists as regular file, use -Force to replace)"
-					Write-ColorText "{Yellow}[symlink] {Gray}Skipped $profileName (exists, use -Force to replace)"
-				}
+				# Correct target, skip
+				$script:setupSummary.Exists += $profileName
+				Write-ColorText "{Blue}[symlink] {Yellow}(exists) {Gray}$profilePath {DarkGray}[$profileName]"
 			}
 		} else {
-			# Create new symlink
-			New-Item -ItemType SymbolicLink -Path $profilePath -Target "$PSScriptRoot\Profile.ps1" -Force -ErrorAction SilentlyContinue | Out-Null
-			$script:setupSummary.Created += $profileName
-			Write-ColorText "{Blue}[symlink] {Green}(created) {Green}$PSScriptRoot\Profile.ps1 {Yellow}--> {Gray}$profilePath {DarkGray}[$profileName]"
+			# Backup existing profile
+			if ($Force) {
+				$backupPath = "$profilePath.backup.$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+				Write-ColorText "{Yellow}[symlink] {Gray}Backing up existing profile: $backupPath"
+				Copy-Item $profilePath $backupPath -Force -ErrorAction SilentlyContinue
+				Remove-Item $profilePath -Force -ErrorAction SilentlyContinue
+				New-Item -ItemType SymbolicLink -Path $profilePath -Target $sourcePath -Force -ErrorAction SilentlyContinue | Out-Null
+				$script:setupSummary.Updated += $profileName
+				Write-ColorText "{Blue}[symlink] {Green}(created) {Green}$sourcePath {Yellow}--> {Gray}$profilePath {DarkGray}[$profileName]"
+			} else {
+				$script:setupSummary.Skipped += "$profileName (exists as regular file, use -Force to replace)"
+				Write-ColorText "{Yellow}[symlink] {Gray}Skipped $profileName (exists, use -Force to replace)"
+			}
 		}
+	} else {
+		# Create new symlink
+		New-Item -ItemType SymbolicLink -Path $profilePath -Target $sourcePath -Force -ErrorAction SilentlyContinue | Out-Null
+		$script:setupSummary.Created += $profileName
+		Write-ColorText "{Blue}[symlink] {Green}(created) {Green}$sourcePath {Yellow}--> {Gray}$profilePath {DarkGray}[$profileName]"
 	}
-	
-	if ($profilePaths.Count -eq 0) {
-		Write-ColorText "{Yellow}[symlink] {Gray}No PowerShell profiles found to link"
-	}
-} else {
-	$script:setupSummary.Failed += "PowerShell Profile (source not found)"
-	Write-ColorText "{Red}[symlink] {Gray}Profile.ps1 not found at: $PSScriptRoot\Profile.ps1"
+}
+
+if ($profilePaths.Count -eq 0) {
+	Write-ColorText "{Yellow}[symlink] {Gray}No PowerShell profiles found to link"
 }
 
 # Copy AppData folder contents (system directories work better with copies)
@@ -1945,3 +2098,5 @@ if ($script:setupSummary.Skipped.Count -gt 0) {
 }
 
 Start-Sleep -Seconds 3
+
+
