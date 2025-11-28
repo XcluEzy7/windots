@@ -2097,6 +2097,8 @@ if (Should-RunSection "Komorebi") {
 ###												WINDOWS SUBSYSTEMS FOR LINUX										 ###
 ##############################################################################
 if (Should-RunSection "WSL") {
+	Write-TitleBox -Title "Windows Subsystem for Linux (WSL) Setup"
+	
 	$wslInstalled = Get-Command wsl -CommandType Application -ErrorAction Ignore
 	if ($Force -or !$wslInstalled) {
 		if ($Force -and $wslInstalled) {
@@ -2106,6 +2108,162 @@ if (Should-RunSection "WSL") {
 		Start-Process -FilePath "PowerShell" -ArgumentList "wsl", "--install" -Verb RunAs -Wait -WindowStyle Hidden
 	} else {
 		Write-ColorText "{Blue}[wsl] {Yellow}(already installed)"
+	}
+	
+	# Handle .wslconfig file configuration and copying
+	$wslConfigPath = "$env:USERPROFILE\.wslconfig"
+	$wslConfigSource = "$PSScriptRoot\config\home\.wslconfig"
+	
+	if (Test-Path $wslConfigSource) {
+		Write-ColorText ""
+		Write-ColorText "{Blue}[wsl] {Magenta}.wslconfig: {Gray}Configuration file found"
+		Write-ColorText "{Yellow}[!] {Gray}The .wslconfig file needs to be configured with your system's resources."
+		Write-ColorText "{DarkGray}   Please review and adjust settings like memory, processors, and swap size."
+		Write-ColorText ""
+		
+		$configured = $(Write-Host "Have you configured the .wslconfig file? [y/N]: " -NoNewline -ForegroundColor Magenta; Read-Host)
+		
+		if ($configured.ToUpper() -ne 'Y') {
+			Write-ColorText ""
+			Write-ColorText "{Yellow}[!] {Gray}The .wslconfig file should be configured before using WSL."
+			Write-ColorText ""
+			
+			$openNow = $(Write-Host "Would you like to configure it now? [y/N]: " -NoNewline -ForegroundColor Magenta; Read-Host)
+			
+			if ($openNow.ToUpper() -eq 'Y') {
+				Write-ColorText ""
+				Write-ColorText "{Blue}[wsl] {Gray}Opening .wslconfig file for editing..."
+				
+				# Find available terminal editor (prefer nvim, then micro, then fallback)
+				$editor = $null
+				$editorName = $null
+				
+				if (Get-Command nvim -ErrorAction SilentlyContinue) {
+					$editor = "nvim"
+					$editorName = "nvim"
+				} elseif (Get-Command micro -ErrorAction SilentlyContinue) {
+					$editor = "micro"
+					$editorName = "micro"
+				} else {
+					# Fallback to default editor
+					$editor = $null
+					$editorName = "default editor"
+				}
+				
+				if ($editor) {
+					# Use terminal editor (nvim or micro)
+					Write-ColorText "{Blue}[wsl] {Gray}Opening in {Cyan}${editorName} {Gray}(terminal editor)..."
+					Write-ColorText "{DarkGray}   After editing, save and exit the editor to continue."
+					Write-ColorText ""
+					
+					try {
+						# Run editor directly in current terminal (blocking)
+						& $editor $wslConfigSource
+						
+						# After editor exits, copy the configured file
+						if (Test-Path $wslConfigSource) {
+							Write-ColorText ""
+							Write-ColorText "{Blue}[wsl] {Green}(saved) {Gray}Configuration saved. Copying file to user profile..."
+							
+							# Now copy the configured source file to destination
+							if (Test-Path $wslConfigPath) {
+								# Backup existing file if it exists
+								$backupPath = "$wslConfigPath.backup.$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+								Copy-Item $wslConfigPath $backupPath -Force -ErrorAction SilentlyContinue
+								$script:setupSummary.Updated += ".wslconfig"
+							} else {
+								$script:setupSummary.Created += ".wslconfig"
+							}
+							
+							Copy-Item $wslConfigSource $wslConfigPath -Force -ErrorAction SilentlyContinue
+							Write-ColorText "{Blue}[wsl] {Green}(copied) {Gray}.wslconfig copied to {Cyan}$wslConfigPath"
+						} else {
+							Write-ColorText "{Blue}[wsl] {Yellow}(warning) {Gray}Source file not found after editing."
+							Write-ColorText "{DarkGray}   Please check: {Cyan}$wslConfigSource"
+						}
+					} catch {
+						Write-ColorText "{Blue}[wsl] {Red}(failed) {Gray}Could not open .wslconfig in ${editorName}: $_"
+						Write-ColorText "{DarkGray}   Please manually edit: {Cyan}$wslConfigSource"
+						Write-ColorText "{DarkGray}   Then run {Cyan}w11dot-setup -Wsl {DarkGray}again."
+						exit 0
+					}
+				} else {
+					# Fallback to default editor (non-blocking)
+					Write-ColorText "{Blue}[wsl] {Yellow}(warning) {Gray}Terminal editor (nvim/micro) not found. Using default editor."
+					Write-ColorText "{DarkGray}   Please edit the source file: {Cyan}$wslConfigSource"
+					Write-ColorText "{DarkGray}   After saving, run {Cyan}w11dot-setup -Wsl {DarkGray}again."
+					try {
+						Start-Process $wslConfigSource
+						Write-ColorText ""
+						Write-ColorText "{Blue}[wsl] {Yellow}(paused) {Gray}Waiting for you to configure .wslconfig..."
+						Write-ColorText "{DarkGray}   Run {Cyan}w11dot-setup -Wsl {DarkGray}again after you've finished configuring."
+						exit 0
+					} catch {
+						Write-ColorText "{Blue}[wsl] {Red}(failed) {Gray}Could not open .wslconfig file: $_"
+						Write-ColorText "{DarkGray}   Please manually edit: {Cyan}$wslConfigSource"
+						Write-ColorText "{DarkGray}   Then run {Cyan}w11dot-setup -Wsl {DarkGray}again."
+						exit 0
+					}
+				}
+			} else {
+				# User doesn't want to configure now, but still copy the file
+				if (Test-Path $wslConfigPath) {
+					$sourceHash = (Get-FileHash $wslConfigSource -ErrorAction SilentlyContinue).Hash
+					$destHash = (Get-FileHash $wslConfigPath -ErrorAction SilentlyContinue).Hash
+					
+					if ($sourceHash -ne $destHash) {
+						if ($Force) {
+							$backupPath = "$wslConfigPath.backup.$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+							Copy-Item $wslConfigPath $backupPath -Force -ErrorAction SilentlyContinue
+							Copy-Item $wslConfigSource $wslConfigPath -Force -ErrorAction SilentlyContinue
+							$script:setupSummary.Updated += ".wslconfig"
+							Write-ColorText "{Blue}[wsl] {Yellow}(updated) {Gray}.wslconfig {DarkGray}(backup: $backupPath)"
+						} else {
+							Write-ColorText "{Blue}[wsl] {Yellow}(exists) {Gray}.wslconfig already exists (use -Force to update)"
+						}
+					} else {
+						Write-ColorText "{Blue}[wsl] {Yellow}(exists) {Gray}.wslconfig already exists and matches source"
+					}
+				} else {
+					Copy-Item $wslConfigSource $wslConfigPath -Force -ErrorAction SilentlyContinue
+					$script:setupSummary.Created += ".wslconfig"
+					Write-ColorText "{Blue}[wsl] {Green}(copied) {Gray}.wslconfig copied to {Cyan}$wslConfigPath"
+				}
+				Write-ColorText "{Blue}[wsl] {Yellow}(skipped) {Gray}Continuing with setup. You can configure .wslconfig later."
+				Write-ColorText "{DarkGray}   File location: {Cyan}$wslConfigPath"
+			}
+		} else {
+			# User says it's already configured, copy the file
+			if (Test-Path $wslConfigPath) {
+				$sourceHash = (Get-FileHash $wslConfigSource -ErrorAction SilentlyContinue).Hash
+				$destHash = (Get-FileHash $wslConfigPath -ErrorAction SilentlyContinue).Hash
+				
+				if ($sourceHash -ne $destHash) {
+					if ($Force) {
+						$backupPath = "$wslConfigPath.backup.$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+						Copy-Item $wslConfigPath $backupPath -Force -ErrorAction SilentlyContinue
+						Copy-Item $wslConfigSource $wslConfigPath -Force -ErrorAction SilentlyContinue
+						$script:setupSummary.Updated += ".wslconfig"
+						Write-ColorText "{Blue}[wsl] {Yellow}(updated) {Gray}.wslconfig {DarkGray}(backup: $backupPath)"
+					} else {
+						Write-ColorText "{Blue}[wsl] {Yellow}(exists) {Gray}.wslconfig already exists (use -Force to update)"
+					}
+				} else {
+					Write-ColorText "{Blue}[wsl] {Yellow}(exists) {Gray}.wslconfig already exists and matches source"
+				}
+			} else {
+				Copy-Item $wslConfigSource $wslConfigPath -Force -ErrorAction SilentlyContinue
+				$script:setupSummary.Created += ".wslconfig"
+				Write-ColorText "{Blue}[wsl] {Green}(copied) {Gray}.wslconfig copied to {Cyan}$wslConfigPath"
+			}
+			Write-ColorText "{Blue}[wsl] {Green}(configured) {Gray}.wslconfig file is ready."
+		}
+	} else {
+		# Source file doesn't exist
+		Write-ColorText ""
+		Write-ColorText "{Blue}[wsl] {Yellow}(info) {Gray}No .wslconfig source file found."
+		Write-ColorText "{DarkGray}   You can create one manually at: {Cyan}$wslConfigPath"
+		Write-ColorText "{DarkGray}   See: {Cyan}https://learn.microsoft.com/en-us/windows/wsl/wsl-config"
 	}
 }
 

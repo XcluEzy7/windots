@@ -114,6 +114,7 @@ cd `your_location`
 <h4>🔬 Improved PowerShell Experimental Features Support <small><i>(v0.06)</i></small></h4>
 <h4>⚙️ PowerShell 5.1 Module Installation Support <small><i>(v0.07)</i></small></h4>
 <h4>🔑 YASB GitHub Token Configuration <small><i>(v0.08)</i></small></h4>
+<h4>🐧 WSL Configuration Setup with Terminal Editor Support <small><i>(v0.09)</i></small></h4>
 
 > [!IMPORTANT]
 > **PowerShell Module Installation**: PowerShell modules from the PowerShell Gallery must be installed in **PowerShell 5.1** (Windows PowerShell), not PowerShell 7.x. The `Setup.ps1` script automatically handles this by delegating module installation to PowerShell 5.1 (`powershell.exe`) even when the script itself runs in PowerShell 7.x. This ensures modules are installed in the correct location and are available to both PowerShell versions.
@@ -129,6 +130,13 @@ After the initial setup, `Setup.ps1` is automatically added to your PATH, allowi
 Environment variables in `appList.json` now automatically expand to user-specific paths. No need to manually edit hardcoded paths - use placeholders like `%USERPROFILE%` or `%ProgramFiles%` and they will be automatically resolved to the correct paths for each user during setup.
 
 PowerShell experimental features are now properly enabled with improved error handling and validation. The script correctly identifies feature names (e.g., `PSSubsystemPluginModel`), validates their existence before enabling, and provides clear warnings about PowerShell restart requirements. When `PSSubsystemPluginModel` is enabled, the script automatically attempts to install the `CompletionPredictor` module, with helpful guidance if a restart is required first.
+
+The WSL setup section now includes interactive `.wslconfig` file configuration. When running `w11dot-setup -Wsl`, the script will:
+- Copy the `.wslconfig` template from `config/home/.wslconfig` to your user profile
+- Prompt you to configure the file with your system's resources (memory, processors, swap size, etc.)
+- Open the file in a terminal editor (nvim or micro, if available) for editing before copying to the destination
+- Wait for you to save and exit the editor, then automatically copy the configured file to `$env:USERPROFILE\.wslconfig`
+- Allow you to skip configuration if you prefer to configure it later
 
 The setup script supports skip parameters to run only specific sections of the installation. This is useful for:
 - Reinstalling missing packages after issues
