@@ -113,6 +113,7 @@ cd `your_location`
 <h4>⚡ Quick re-install Command with w11dot-setup <small><i>(v0.05)</i></small></h4>
 <h4>🔬 Improved PowerShell Experimental Features Support <small><i>(v0.06)</i></small></h4>
 <h4>⚙️ PowerShell 5.1 Module Installation Support <small><i>(v0.07)</i></small></h4>
+<h4>🔑 YASB GitHub Token Configuration <small><i>(v0.08)</i></small></h4>
 
 > [!IMPORTANT]
 > **PowerShell Module Installation**: PowerShell modules from the PowerShell Gallery must be installed in **PowerShell 5.1** (Windows PowerShell), not PowerShell 7.x. The `Setup.ps1` script automatically handles this by delegating module installation to PowerShell 5.1 (`powershell.exe`) even when the script itself runs in PowerShell 7.x. This ensures modules are installed in the correct location and are available to both PowerShell versions.

@@ -1349,22 +1349,41 @@ if (Should-RunSection "Git") {
 	if (Get-Command git -ErrorAction SilentlyContinue) {
 		$gitUserName = (git config user.name)
 		$gitUserMail = (git config user.email)
+		
+		# Original author's information - prompt to change if these are detected
+		$originalAuthorName = "Jacquin Moon"
+		$originalAuthorEmail = "jacquindev@outlook.com"
+		
+		# Check if current values match original author's (should be changed by user)
+		$isOriginalAuthor = ($gitUserName -eq $originalAuthorName) -or ($gitUserMail -eq $originalAuthorEmail)
 
-		if ($Force -or $null -eq $gitUserName) {
-			if ($Force -and $null -ne $gitUserName) {
+		if ($Force -or $null -eq $gitUserName -or $isOriginalAuthor) {
+			if ($Force -and $null -ne $gitUserName -and !$isOriginalAuthor) {
 				Write-ColorText "{Yellow}Force mode: Re-prompting for git name..."
+			} elseif ($isOriginalAuthor) {
+				Write-ColorText "{Yellow}[!] {Gray}Detected original author's git configuration. Please set your own git name and email."
 			}
 			$gitUserName = $(Write-Host "Input your git name: " -NoNewline -ForegroundColor Magenta; Read-Host)
 		} else {
 			Write-ColorText "{Blue}[user.name]  {Magenta}git: {Yellow}(already set) {Gray}$gitUserName"
 		}
-		if ($Force -or $null -eq $gitUserMail) {
-			if ($Force -and $null -ne $gitUserMail) {
+		if ($Force -or $null -eq $gitUserMail -or $isOriginalAuthor) {
+			if ($Force -and $null -ne $gitUserMail -and !$isOriginalAuthor) {
 				Write-ColorText "{Yellow}Force mode: Re-prompting for git email..."
+			} elseif ($isOriginalAuthor -and $null -ne $gitUserMail) {
+				Write-ColorText "{Yellow}[!] {Gray}Detected original author's git configuration. Please set your own git name and email."
 			}
 			$gitUserMail = $(Write-Host "Input your git email: " -NoNewline -ForegroundColor Magenta; Read-Host)
 		} else {
 			Write-ColorText "{Blue}[user.email] {Magenta}git: {Yellow}(already set) {Gray}$gitUserMail"
+		}
+
+		# Set git config immediately in Git section
+		if ($gitUserName -and $gitUserMail) {
+			git config --global user.name $gitUserName
+			git config --global user.email $gitUserMail
+			Write-ColorText "{Blue}[git] {Green}(configured) {Gray}user.name = $gitUserName"
+			Write-ColorText "{Blue}[git] {Green}(configured) {Gray}user.email = $gitUserMail"
 		}
 
 		git submodule update --init --recursive
@@ -1376,6 +1395,78 @@ if (Should-RunSection "Git") {
 			gh auth login
 		} elseif (!(gh auth status)) { 
 			gh auth login 
+		}
+	}
+
+	# Setup YASB GitHub Token for GitHub widget
+	$yasbConfigPath = Join-Path $PSScriptRoot "config\config\yasb"
+	$yasbEnvPath = Join-Path $yasbConfigPath ".env"
+	$existingToken = [System.Environment]::GetEnvironmentVariable("YASB_GITHUB_TOKEN")
+	
+	if ($Force -or (!$existingToken -and !(Test-Path $yasbEnvPath))) {
+		if ($Force -and ($existingToken -or (Test-Path $yasbEnvPath))) {
+			Write-ColorText "{Yellow}Force mode: Re-prompting for YASB GitHub token..."
+		}
+		Write-ColorText "{Blue}[github] {Magenta}YASB: {Gray}Configure GitHub token for YASB widget..."
+		Write-ColorText "{DarkGray}   The GitHub widget requires a Personal Access Token (classic)"
+		Write-ColorText "{DarkGray}   Create one at: https://github.com/settings/tokens"
+		Write-ColorText "{DarkGray}   Required scopes: notifications (read)"
+		Write-ColorText "{DarkGray}   See .env.example in config/config/yasb/ for manual setup instructions"
+		Write-ColorText ""
+		
+		$setupToken = $(Write-Host "Setup YASB_GITHUB_TOKEN? [y/N]: " -NoNewline -ForegroundColor Magenta; Read-Host)
+		if ($setupToken.ToUpper() -eq 'Y') {
+			$tokenValue = $(Write-Host "Enter your GitHub Personal Access Token: " -NoNewline -ForegroundColor Magenta; Read-Host -AsSecureString)
+			$tokenPlainText = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
+				[Runtime.InteropServices.Marshal]::SecureStringToBSTR($tokenValue)
+			)
+			
+			if ($tokenPlainText) {
+				Write-ColorText ""
+				Write-ColorText "{DarkGray}   Choose storage method:"
+				Write-ColorText "{DarkGray}   1) Environment variable (recommended, system-wide)"
+				Write-ColorText "{DarkGray}   2) .env file (local to yasb folder)"
+				$storageChoice = $(Write-Host "Storage method [1/2]: " -NoNewline -ForegroundColor Magenta; Read-Host)
+				
+				if ($storageChoice -eq "1" -or $storageChoice -eq "") {
+					# Set as environment variable
+					try {
+						[System.Environment]::SetEnvironmentVariable("YASB_GITHUB_TOKEN", $tokenPlainText, "User")
+						$Env:YASB_GITHUB_TOKEN = $tokenPlainText
+						Write-ColorText "{Blue}[github] {Magenta}YASB: {Green}(success) {Gray}YASB_GITHUB_TOKEN set as environment variable"
+					} catch {
+						Write-ColorText "{Blue}[github] {Magenta}YASB: {Red}(failed) {Gray}Could not set environment variable: $_"
+					}
+				} elseif ($storageChoice -eq "2") {
+					# Create .env file
+					try {
+						if (!(Test-Path $yasbConfigPath)) {
+							New-Item -ItemType Directory -Path $yasbConfigPath -Force | Out-Null
+						}
+						"YASB_GITHUB_TOKEN=$tokenPlainText" | Out-File -FilePath $yasbEnvPath -Encoding utf8 -NoNewline
+						Write-ColorText "{Blue}[github] {Magenta}YASB: {Green}(success) {Gray}Token saved to .env file at $yasbEnvPath"
+						Write-ColorText "{Yellow}[!] {Gray}Note: The .env file format matches .env.example in the same directory"
+						Write-ColorText "{DarkGray}   You may need to configure YASB to load from .env file if not already set up"
+					} catch {
+						Write-ColorText "{Blue}[github] {Magenta}YASB: {Red}(failed) {Gray}Could not create .env file: $_"
+					}
+				} else {
+					Write-ColorText "{Blue}[github] {Magenta}YASB: {Yellow}(skipped) {Gray}Invalid choice, token not saved"
+				}
+				
+				# Clear the plaintext token from memory
+				$tokenPlainText = $null
+			} else {
+				Write-ColorText "{Blue}[github] {Magenta}YASB: {Yellow}(skipped) {Gray}No token provided"
+			}
+		} else {
+			Write-ColorText "{Blue}[github] {Magenta}YASB: {Yellow}(skipped) {Gray}YASB GitHub token setup skipped"
+		}
+	} else {
+		if ($existingToken) {
+			Write-ColorText "{Blue}[github] {Magenta}YASB: {Yellow}(exists) {Gray}YASB_GITHUB_TOKEN environment variable already set"
+		} elseif (Test-Path $yasbEnvPath) {
+			Write-ColorText "{Blue}[github] {Magenta}YASB: {Yellow}(exists) {Gray}.env file found at $yasbEnvPath"
 		}
 	}
 
@@ -1596,10 +1687,13 @@ if (Test-Path "$PSScriptRoot\windows" -PathType Container) {
 
 	Refresh ($i++)
 
-	# Set the right git name and email for the user after symlinking
+	# Set the right git name and email for the user after symlinking (overwrites template values)
+	# This ensures user's git config overrides any values from the .gitconfig template file
 	if (Get-Command git -ErrorAction SilentlyContinue) {
-		git config --global user.name $gitUserName
-		git config --global user.email $gitUserMail
+		if ($gitUserName -and $gitUserMail) {
+			git config --global user.name $gitUserName
+			git config --global user.email $gitUserMail
+		}
 	}
 }
 

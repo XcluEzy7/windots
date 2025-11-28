@@ -64,8 +64,9 @@
     process = git-lfs filter-process
     required = true
 [user]
-	name = Jacquin Moon
-	email = jacquindev@outlook.com
+	# name and email will be set by Setup.ps1 during Git configuration
+	# name = Your Name Here
+	# email = your.email@example.com
     signingkey = ~/.ssh/id_ed25519.pub
 [gpg]
 	format = ssh
