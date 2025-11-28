@@ -10,5 +10,5 @@ kernelCommandLine = cgroup_no_v1="all"
 [experimental]
 autoMemoryReclaim=dropcache
 bestEffortDnsParsing=true
-dnsTunnelingIpAddress=10.2.0.1      # Proton VPN
+dnsTunnelingIpAddress=9.9.9.9  #10.2.0.1      # Proton VPN
 hostAddressLoopback=true

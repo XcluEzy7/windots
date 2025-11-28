@@ -79,7 +79,9 @@
 				// { "packageName": "virtualbox", "packageVersion": "7.1.4" }
 				{ "packageName": "choco-cleaner" },
 				{ "packageName": "gpg4win" },
-				{ "packageName": "burnttoast-psmodule" }
+				{ "packageName": "burnttoast-psmodule" },
+				{ "packageName": "rustdesk" }
+				
 			],
 			"additionalArgs": ["-y", "-r", "--no-progress"]
 		},

@@ -26,5 +26,3 @@ GEMINI.md
 
 # Environment files (may contain sensitive tokens/keys)
 .env
-.env.*
-!.env.example

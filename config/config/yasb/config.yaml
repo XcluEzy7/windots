@@ -140,7 +140,7 @@ widgets:
       label: "{data}"
       app_list:
         - {icon: "\uf282", launch: "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"}
-        - {icon: "\udb82\ude1e", launch: "code"}
+        - {icon: "\udb82\ude1e", launch: "cursor"}
         - {icon: "\uf489", launch: "wt"}
         #- {icon: "\udb80\ude39", launch: "C:\\Program Files\\Mozilla Firefox\\firefox.exe"}
         #- {icon: "\uf1ff", launch: "C:\\Users\\amn\\AppData\\Local\\Discord\\Update.exe --processStart Discord.exe"}
