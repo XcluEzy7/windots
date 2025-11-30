@@ -43,7 +43,6 @@
 				// Editors
 				{ "packageId": "JetBrains.IntelliJIDEA.Community" },
 				{ "packageId": "Microsoft.VisualStudioCode" },
-				//{ "packageId": "Cursor.Cursor" },
 				{ "packageId": "Notepad++.Notepad++" },
 				{ "packageId": "Obsidian.Obsidian" },
 				{ "packageId": "LoftLabs.DevPod" }, // Client-Only Codespaces
@@ -59,7 +58,6 @@
 				//{ "packageId": "Canonical.MicroK8s" },
 
 				// Paid services
-				//{ "packageId": "Symless.Synergy" },
 				{ "packageId": "Proton.ProtonVPN" },
 				{ "packageId": "Stardock.Start11" },
 
@@ -81,7 +79,7 @@
 				{ "packageName": "gpg4win" },
 				{ "packageName": "burnttoast-psmodule" },
 				{ "packageName": "rustdesk" }
-				
+
 			],
 			"additionalArgs": ["-y", "-r", "--no-progress"]
 		},
@@ -108,6 +106,7 @@
 				{ "packageName": "whkd" },
 				{ "packageName": "bitwarden" },
 				{ "packageName": "sharex" },
+				{ "packageName": "cursor" },
 
 				// Git helpers
 				{ "packageName": "bfg" },

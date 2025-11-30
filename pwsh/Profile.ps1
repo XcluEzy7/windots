@@ -186,11 +186,12 @@ function global:W11dot-Setup {
         [switch]$Miscellaneous,
         [switch]$Komorebi,
         [switch]$NerdFonts,
-        [switch]$WSL
+        [switch]$WSL,
+        [switch]$Updates
     )
     # Try global variable first (set during profile load)
     $scriptPath = $global:W11dotSetupPath
-    
+
     # If not found, search for Setup.ps1
     if (-not $scriptPath -or -not (Test-Path $scriptPath)) {
         if ($Env:DOTFILES -and (Test-Path "$Env:DOTFILES\Setup.ps1")) {
@@ -220,7 +221,7 @@ function global:W11dot-Setup {
             }
         }
     }
-    
+
     if ($scriptPath -and (Test-Path $scriptPath)) {
         & $scriptPath @PSBoundParameters
     } else {
@@ -262,9 +263,10 @@ function global:Invoke-W11dotSetup {
         [switch]$Miscellaneous,
         [switch]$Komorebi,
         [switch]$NerdFonts,
-        [switch]$WSL
+        [switch]$WSL,
+        [switch]$Updates
     )
-    
+
     # Find Setup.ps1 path
     $setupPath = $null
     if ($global:W11dotSetupWrapperPath -and (Test-Path $global:W11dotSetupWrapperPath)) {
@@ -279,12 +281,19 @@ function global:Invoke-W11dotSetup {
         W11dot-Setup @PSBoundParameters
         return
     }
-    
+
     if (-not $setupPath) {
         Write-Error "Setup.ps1 not found. Please run Setup.ps1 first to configure your environment."
         return
     }
-    
+
+    # Updates mode doesn't require admin (Scoop must run as non-admin)
+    if ($Updates) {
+        # Run Setup.ps1 directly without admin elevation for Updates
+        & $setupPath @PSBoundParameters
+        return
+    }
+
     # Check if gsudo is available
     $gsudoAvailable = $false
     if (Get-Command gsudo -ErrorAction SilentlyContinue) {
@@ -292,7 +301,7 @@ function global:Invoke-W11dotSetup {
     } elseif (Get-Command gsudo.exe -ErrorAction SilentlyContinue) {
         $gsudoAvailable = $true
     }
-    
+
     # Use gsudo to elevate privileges if available
     if ($gsudoAvailable) {
         Write-Host "Elevating privileges with gsudo (UAC prompt will appear)..." -ForegroundColor Cyan
@@ -313,11 +322,12 @@ function global:Invoke-W11dotSetup {
         if ($Komorebi) { $psArgs += "-Komorebi" }
         if ($NerdFonts) { $psArgs += "-NerdFonts" }
         if ($WSL) { $psArgs += "-WSL" }
-        
+        if ($Updates) { $psArgs += "-Updates" }
+
         # Use gsudo to run PowerShell with the script and parameters
         # gsudo supports PowerShell script blocks or commands
         $gsudoCmd = if (Get-Command gsudo -ErrorAction SilentlyContinue) { "gsudo" } else { "gsudo.exe" }
-        
+
         # Run with gsudo - it will handle UAC prompt
         & $gsudoCmd pwsh.exe @psArgs
     } else {
@@ -514,7 +524,7 @@ Set-Alias -Name su -Value admin
 # Helper function to find Sysinternals tools in common locations
 function Get-SysinternalsPath {
     param([string]$ToolName)
-    
+
     $commonPaths = @(
         "$env:ProgramFiles\Sysinternals\$ToolName.exe",
         "${env:ProgramFiles(x86)}\Sysinternals\$ToolName.exe",
@@ -522,20 +532,20 @@ function Get-SysinternalsPath {
         "$env:USERPROFILE\Desktop\$ToolName.exe",
         "$env:LOCALAPPDATA\Microsoft\WindowsApps\$ToolName.exe"
     )
-    
+
     # Check if tool is in PATH
     $pathTool = Get-Command $ToolName -ErrorAction SilentlyContinue
     if ($pathTool) {
         return $pathTool.Source
     }
-    
+
     # Check common locations
     foreach ($path in $commonPaths) {
         if (Test-Path $path) {
             return $path
         }
     }
-    
+
     return $null
 }
 
@@ -624,7 +634,7 @@ function Get-SysinternalsTools {
         Write-Host "No Sysinternals tools found. Install Sysinternals Suite to enable aliases." -ForegroundColor Yellow
         return
     }
-    
+
     Write-Host "Available Sysinternals Tools:" -ForegroundColor Cyan
     Write-Host "==============================" -ForegroundColor Cyan
     $global:AvailableSysinternalsAliases | Sort-Object | ForEach-Object {

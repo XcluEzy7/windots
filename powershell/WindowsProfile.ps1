@@ -186,11 +186,12 @@ function global:W11dot-Setup {
         [switch]$Miscellaneous,
         [switch]$Komorebi,
         [switch]$NerdFonts,
-        [switch]$WSL
+        [switch]$WSL,
+        [switch]$Updates
     )
     # Try global variable first (set during profile load)
     $scriptPath = $global:W11dotSetupPath
-    
+
     # If not found, search for Setup.ps1
     if (-not $scriptPath -or -not (Test-Path $scriptPath)) {
         if ($Env:DOTFILES -and (Test-Path "$Env:DOTFILES\Setup.ps1")) {
@@ -220,7 +221,7 @@ function global:W11dot-Setup {
             }
         }
     }
-    
+
     if ($scriptPath -and (Test-Path $scriptPath)) {
         & $scriptPath @PSBoundParameters
     } else {
@@ -265,9 +266,10 @@ function global:Invoke-W11dotSetup {
         [switch]$Miscellaneous,
         [switch]$Komorebi,
         [switch]$NerdFonts,
-        [switch]$WSL
+        [switch]$WSL,
+        [switch]$Updates
     )
-    
+
     # Find Setup.ps1 path
     $setupPath = $null
     if ($global:W11dotSetupWrapperPath -and (Test-Path $global:W11dotSetupWrapperPath)) {
@@ -282,12 +284,19 @@ function global:Invoke-W11dotSetup {
         W11dot-Setup @PSBoundParameters
         return
     }
-    
+
     if (-not $setupPath) {
         Write-Error "Setup.ps1 not found. Please run Setup.ps1 first to configure your environment."
         return
     }
-    
+
+    # Updates mode doesn't require admin (Scoop must run as non-admin)
+    if ($Updates) {
+        # Run Setup.ps1 directly without admin elevation for Updates
+        & $setupPath @PSBoundParameters
+        return
+    }
+
     # Check if gsudo is available
     $gsudoAvailable = $false
     if (Get-Command gsudo -ErrorAction SilentlyContinue) {
@@ -295,7 +304,7 @@ function global:Invoke-W11dotSetup {
     } elseif (Get-Command gsudo.exe -ErrorAction SilentlyContinue) {
         $gsudoAvailable = $true
     }
-    
+
     # Use gsudo to elevate privileges if available
     if ($gsudoAvailable) {
         Write-Host "Elevating privileges with gsudo (UAC prompt will appear)..." -ForegroundColor Cyan
@@ -316,11 +325,12 @@ function global:Invoke-W11dotSetup {
         if ($Komorebi) { $psArgs += "-Komorebi" }
         if ($NerdFonts) { $psArgs += "-NerdFonts" }
         if ($WSL) { $psArgs += "-WSL" }
-        
+        if ($Updates) { $psArgs += "-Updates" }
+
         # Use gsudo to run PowerShell with the script and parameters
         # gsudo supports PowerShell script blocks or commands
         $gsudoCmd = if (Get-Command gsudo -ErrorAction SilentlyContinue) { "gsudo" } else { "gsudo.exe" }
-        
+
         # Run with gsudo - it will handle UAC prompt (PowerShell 5.1 compatible)
         & $gsudoCmd powershell.exe @psArgs
     } else {
@@ -518,7 +528,7 @@ Set-Alias -Name su -Value admin
 # Helper function to find Sysinternals tools in common locations
 function Get-SysinternalsPath {
     param([string]$ToolName)
-    
+
     $commonPaths = @(
         "$env:ProgramFiles\Sysinternals\$ToolName.exe",
         "${env:ProgramFiles(x86)}\Sysinternals\$ToolName.exe",
@@ -526,79 +536,79 @@ function Get-SysinternalsPath {
         "$env:USERPROFILE\Desktop\$ToolName.exe",
         "$env:LOCALAPPDATA\Microsoft\WindowsApps\$ToolName.exe"
     )
-    
+
     # Check if tool is in PATH
     $pathTool = Get-Command $ToolName -ErrorAction SilentlyContinue
     if ($pathTool) {
         return $pathTool.Source
     }
-    
+
     # Check common locations
     foreach ($path in $commonPaths) {
         if (Test-Path $path) {
             return $path
         }
     }
-    
+
     return $null
 }
 
 # Create Sysinternals aliases if tools are found
 $sysinternalsTools = @{
-    'procexp'    = 'procexp.exe'      # Process Explorer
-    'procmon'    = 'procmon.exe'      # Process Monitor
-    'autoruns'   = 'autoruns.exe'     # Autoruns
-    'tcpview'    = 'tcpview.exe'      # TCPView
-    'sysmon'     = 'sysmon.exe'       # Sysmon
-    'handle'     = 'handle.exe'       # Handle
-    'psexec'     = 'psexec.exe'       # PsExec
-    'pslist'     = 'pslist.exe'       # PsList
-    'pskill'     = 'pskill.exe'       # PsKill
-    'psinfo'     = 'psinfo.exe'       # PsInfo
-    'psservice'  = 'psservice.exe'    # PsService
-    'psloggedon' = 'psloggedon.exe'   # PsLoggedOn
-    'vmmap'      = 'vmmap.exe'        # VMMap
-    'diskmon'    = 'diskmon.exe'      # DiskMon
-    'procrun'    = 'procrun.exe'      # ProcRun
-    'procdump'   = 'procdump.exe'     # ProcDump
-    'strings'    = 'strings.exe'      # Strings
-    'sigcheck'   = 'sigcheck.exe'     # Sigcheck
-    'accesschk'  = 'accesschk.exe'    # AccessChk
-    'accessenum' = 'accessenum.exe'  # AccessEnum
-    'bginfo'     = 'bginfo.exe'       # BGInfo
-    'clockres'   = 'clockres.exe'     # ClockRes
-    'contig'     = 'contig.exe'       # Contig
-    'coreinfo'   = 'coreinfo.exe'     # CoreInfo
-    'desktops'   = 'desktops.exe'     # Desktops
-    'diskview'   = 'diskview.exe'     # DiskView
-    'du'         = 'du.exe'           # Disk Usage
-    'efsdump'    = 'efsdump.exe'      # EfsDump
-    'findlinks'  = 'findlinks.exe'    # FindLinks
+    'procexp'       = 'procexp.exe'      # Process Explorer
+    'procmon'       = 'procmon.exe'      # Process Monitor
+    'autoruns'      = 'autoruns.exe'     # Autoruns
+    'tcpview'       = 'tcpview.exe'      # TCPView
+    'sysmon'        = 'sysmon.exe'       # Sysmon
+    'handle'        = 'handle.exe'       # Handle
+    'psexec'        = 'psexec.exe'       # PsExec
+    'pslist'        = 'pslist.exe'       # PsList
+    'pskill'        = 'pskill.exe'       # PsKill
+    'psinfo'        = 'psinfo.exe'       # PsInfo
+    'psservice'     = 'psservice.exe'    # PsService
+    'psloggedon'    = 'psloggedon.exe'   # PsLoggedOn
+    'vmmap'         = 'vmmap.exe'        # VMMap
+    'diskmon'       = 'diskmon.exe'      # DiskMon
+    'procrun'       = 'procrun.exe'      # ProcRun
+    'procdump'      = 'procdump.exe'     # ProcDump
+    'strings'       = 'strings.exe'      # Strings
+    'sigcheck'      = 'sigcheck.exe'     # Sigcheck
+    'accesschk'     = 'accesschk.exe'    # AccessChk
+    'accessenum'    = 'accessenum.exe'  # AccessEnum
+    'bginfo'        = 'bginfo.exe'       # BGInfo
+    'clockres'      = 'clockres.exe'     # ClockRes
+    'contig'        = 'contig.exe'       # Contig
+    'coreinfo'      = 'coreinfo.exe'     # CoreInfo
+    'desktops'      = 'desktops.exe'     # Desktops
+    'diskview'      = 'diskview.exe'     # DiskView
+    'du'            = 'du.exe'           # Disk Usage
+    'efsdump'       = 'efsdump.exe'      # EfsDump
+    'findlinks'     = 'findlinks.exe'    # FindLinks
     'logonsessions' = 'logonsessions.exe' # LogonSessions
-    'movefile'   = 'movefile.exe'     # MoveFile
-    'notmyfault' = 'notmyfault.exe'    # NotMyFault
-    'pendmoves'  = 'pendmoves.exe'    # PendMoves
-    'portmon'    = 'portmon.exe'      # PortMon
-    'procexp64'  = 'procexp64.exe'     # Process Explorer 64-bit
-    'procmon64'  = 'procmon64.exe'    # Process Monitor 64-bit
-    'psfile'     = 'psfile.exe'       # PsFile
-    'psgetsid'   = 'psgetsid.exe'     # PsGetSid
-    'psping'     = 'psping.exe'       # PsPing
-    'psshutdown' = 'psshutdown.exe'    # PsShutdown
-    'pssuspend'  = 'pssuspend.exe'    # PsSuspend
-    'rammap'     = 'rammap.exe'       # RAMMap
-    'regdelnull' = 'regdelnull.exe'   # RegDelNull
-    'ru'         = 'ru.exe'           # Registry Usage
-    'sdelete'    = 'sdelete.exe'      # SDelete
-    'shareenum'  = 'shareenum.exe'     # ShareEnum
-    'shellrunas' = 'shellrunas.exe'   # ShellRunAs
-    'streams'    = 'streams.exe'      # Streams
-    'sync'       = 'sync.exe'         # Sync
-    'tcpvcon'    = 'tcpvcon.exe'      # TCPView Console
-    'vmmap64'    = 'vmmap64.exe'      # VMMap 64-bit
-    'whois'      = 'whois.exe'        # Whois
-    'winobj'     = 'winobj.exe'       # WinObj
-    'zoomit'     = 'zoomit.exe'       # ZoomIt
+    'movefile'      = 'movefile.exe'     # MoveFile
+    'notmyfault'    = 'notmyfault.exe'    # NotMyFault
+    'pendmoves'     = 'pendmoves.exe'    # PendMoves
+    'portmon'       = 'portmon.exe'      # PortMon
+    'procexp64'     = 'procexp64.exe'     # Process Explorer 64-bit
+    'procmon64'     = 'procmon64.exe'    # Process Monitor 64-bit
+    'psfile'        = 'psfile.exe'       # PsFile
+    'psgetsid'      = 'psgetsid.exe'     # PsGetSid
+    'psping'        = 'psping.exe'       # PsPing
+    'psshutdown'    = 'psshutdown.exe'    # PsShutdown
+    'pssuspend'     = 'pssuspend.exe'    # PsSuspend
+    'rammap'        = 'rammap.exe'       # RAMMap
+    'regdelnull'    = 'regdelnull.exe'   # RegDelNull
+    'ru'            = 'ru.exe'           # Registry Usage
+    'sdelete'       = 'sdelete.exe'      # SDelete
+    'shareenum'     = 'shareenum.exe'     # ShareEnum
+    'shellrunas'    = 'shellrunas.exe'   # ShellRunAs
+    'streams'       = 'streams.exe'      # Streams
+    'sync'          = 'sync.exe'         # Sync
+    'tcpvcon'       = 'tcpvcon.exe'      # TCPView Console
+    'vmmap64'       = 'vmmap64.exe'      # VMMap 64-bit
+    'whois'         = 'whois.exe'        # Whois
+    'winobj'        = 'winobj.exe'       # WinObj
+    'zoomit'        = 'zoomit.exe'       # ZoomIt
 }
 
 # Store available Sysinternals aliases for tab completion
@@ -628,29 +638,29 @@ function Get-SysinternalsTools {
         Write-Host "No Sysinternals tools found. Install Sysinternals Suite to enable aliases." -ForegroundColor Yellow
         return
     }
-    
+
     Write-Host "Available Sysinternals Tools:" -ForegroundColor Cyan
     Write-Host "==============================" -ForegroundColor Cyan
     $global:AvailableSysinternalsAliases | Sort-Object | ForEach-Object {
         $toolName = $sysinternalsTools[$_]
         $description = switch ($_) {
-            'procexp'    { 'Process Explorer - Advanced task manager' }
-            'procmon'    { 'Process Monitor - Real-time file/registry/process monitor' }
-            'autoruns'   { 'Autoruns - Startup program manager' }
-            'tcpview'    { 'TCPView - Network connection viewer' }
-            'sysmon'     { 'Sysmon - System activity monitor' }
-            'handle'     { 'Handle - File handle viewer' }
-            'psexec'     { 'PsExec - Execute processes remotely' }
-            'pslist'     { 'PsList - Process list utility' }
-            'pskill'     { 'PsKill - Process killer' }
-            'psinfo'     { 'PsInfo - System information' }
-            'psservice'  { 'PsService - Service viewer/controller' }
+            'procexp' { 'Process Explorer - Advanced task manager' }
+            'procmon' { 'Process Monitor - Real-time file/registry/process monitor' }
+            'autoruns' { 'Autoruns - Startup program manager' }
+            'tcpview' { 'TCPView - Network connection viewer' }
+            'sysmon' { 'Sysmon - System activity monitor' }
+            'handle' { 'Handle - File handle viewer' }
+            'psexec' { 'PsExec - Execute processes remotely' }
+            'pslist' { 'PsList - Process list utility' }
+            'pskill' { 'PsKill - Process killer' }
+            'psinfo' { 'PsInfo - System information' }
+            'psservice' { 'PsService - Service viewer/controller' }
             'psloggedon' { 'PsLoggedOn - See who is logged on' }
-            'vmmap'      { 'VMMap - Virtual memory analyzer' }
-            'procdump'   { 'ProcDump - Process dump utility' }
-            'sigcheck'   { 'Sigcheck - File signature verifier' }
-            'accesschk'  { 'AccessChk - Access permissions checker' }
-            default      { "Sysinternals $toolName" }
+            'vmmap' { 'VMMap - Virtual memory analyzer' }
+            'procdump' { 'ProcDump - Process dump utility' }
+            'sigcheck' { 'Sigcheck - File signature verifier' }
+            'accesschk' { 'AccessChk - Access permissions checker' }
+            default { "Sysinternals $toolName" }
         }
         Write-Host "  $_" -ForegroundColor Green -NoNewline
         Write-Host " - $description" -ForegroundColor Gray
@@ -878,7 +888,7 @@ function lazyg {
 
 function git-qc {
     param(
-        [Parameter(Position=0)]
+        [Parameter(Position = 0)]
         [string]$CommitMessage
     )
 
@@ -1033,6 +1043,7 @@ if (Get-Command zoxide -ErrorAction SilentlyContinue) {
     }
 }
 
+Import-Module PowerShellGet
 # Help Function (PowerShell 5.1 compatible - uses Write-Host instead of $PSStyle)
 function Show-Help {
     Write-Host "PowerShell Profile Help" -ForegroundColor Cyan

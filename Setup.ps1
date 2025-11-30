@@ -38,7 +38,6 @@ Version 1.3.2 - Updated by XcluEzy7
 #>
 
 #Requires -Version 7
-#Requires -RunAsAdministrator
 
 <#
 
@@ -59,10 +58,40 @@ Param(
 	[switch]$Miscellaneous,
 	[switch]$Komorebi,
 	[switch]$NerdFonts,
-	[switch]$WSL
+	[switch]$WSL,
+	[switch]$Updates
 )
 
+# CRITICAL: Handle Updates parameter FIRST - before any other processing
+# This must be the very first check after Param block to ensure Updates mode runs exclusively
+if ($Updates) {
+	$updateScriptPath = Join-Path $PSScriptRoot "updateApps.ps1"
+	if (Test-Path $updateScriptPath) {
+		Write-Host "Running application updates..." -ForegroundColor Cyan
+		# Pass through any package manager switches if they exist
+		# Note: Setup.ps1 doesn't have these switches, but updateApps.ps1 can be called directly
+		& $updateScriptPath
+		$exitCode = $LASTEXITCODE
+		exit $exitCode
+	} else {
+		Write-Error "Update script not found: $updateScriptPath"
+		exit 1
+	}
+}
+
 $VerbosePreference = "SilentlyContinue"
+
+# Note: Updates mode doesn't require admin (Scoop must run as non-admin)
+# Other operations require admin, so we check at runtime AFTER Updates check
+$currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+$principal = New-Object System.Security.Principal.WindowsPrincipal($currentUser)
+$isAdmin = $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+
+if (-not $isAdmin) {
+	Write-Error "This script requires administrator privileges. Please run as administrator or use gsudo."
+	Write-Host "For updates only, use: w11dot-setup -Updates" -ForegroundColor Yellow
+	exit 1
+}
 
 # Validate skip parameters - only one can be used at a time
 $skipParams = @($Packages, $PowerShell, $Git, $Symlinks, $Environment, $Addons, $VSCode, $Themes, $Miscellaneous, $Komorebi, $NerdFonts, $WSL)
@@ -310,7 +339,7 @@ try {
 	} else {
 		`$psGalleryRegistered = `$true
 		Write-Output 'PSGALLERY:EXISTS'
-		
+
 		# Check if PSGallery is properly configured
 		if (!`$psGallery.SourceLocation -or `$psGallery.SourceLocation -eq '') {
 			try {
@@ -338,7 +367,7 @@ try {
 
 	# Execute prerequisites script in PowerShell 5.1
 	$prereqResults = & powershell.exe -NoProfile -Command $prereqScript
-	
+
 	# Parse results
 	foreach ($result in $prereqResults) {
 		if ($result -match '^TLS12:') {
@@ -369,9 +398,9 @@ try {
 	try {
 		# Check NuGet provider in PowerShell 5.1
 		$nugetCheckScript = @"
-`$provider = Get-PackageProvider -Name NuGet -ListAvailable -ErrorAction SilentlyContinue | 
-	Where-Object { [version]`$_.Version -ge [version]'2.8.5.201' } | 
-	Sort-Object Version -Descending | 
+`$provider = Get-PackageProvider -Name NuGet -ListAvailable -ErrorAction SilentlyContinue |
+	Where-Object { [version]`$_.Version -ge [version]'2.8.5.201' } |
+	Sort-Object Version -Descending |
 	Select-Object -First 1
 if (`$provider) {
 	Write-Output "EXISTS:`$(`$provider.Version)"
@@ -379,7 +408,7 @@ if (`$provider) {
 	Write-Output 'NOT_FOUND'
 }
 "@
-		
+
 		$nugetCheckResult = & powershell.exe -NoProfile -Command $nugetCheckScript
 		$nugetProvider = $null
 		if ($nugetCheckResult -match '^EXISTS:') {
@@ -389,16 +418,16 @@ if (`$provider) {
 
 		if (!$nugetProvider) {
 			Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Gray}Installing NuGet provider (minimum 2.8.5.201) in PowerShell 5.1 via manual bootstrap..."
-			
+
 			$nugetInstalled = $false
-			
+
 			# Method 1: Try standard installation in PowerShell 5.1 (may fail if PowerShellGet is broken)
 			$nugetInstallScript1 = @"
 try {
 	[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 	Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser -ErrorAction Stop | Out-Null
-	`$verify = Get-PackageProvider -Name NuGet -ListAvailable -ErrorAction SilentlyContinue | 
-		Where-Object { [version]`$_.Version -ge [version]'2.8.5.201' } | 
+	`$verify = Get-PackageProvider -Name NuGet -ListAvailable -ErrorAction SilentlyContinue |
+		Where-Object { [version]`$_.Version -ge [version]'2.8.5.201' } |
 		Select-Object -First 1
 	if (`$verify) {
 		Write-Output "SUCCESS:`$(`$verify.Version)"
@@ -409,7 +438,7 @@ try {
 	Write-Output "ERROR:`$(`$_.Exception.Message)"
 }
 "@
-			
+
 			try {
 				$installResult1 = & powershell.exe -NoProfile -Command $nugetInstallScript1
 				if ($installResult1 -match '^SUCCESS:') {
@@ -424,7 +453,7 @@ try {
 					throw $errorMsg
 				}
 			} catch {
-				
+
 				# Method 2: Manual bootstrap - download and install NuGet provider directly
 				# This runs in the current PowerShell 7.x context to download files, then installs in PowerShell 5.1
 				try {
@@ -433,20 +462,20 @@ try {
 					Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Gray}Downloading NuGet provider installer..."
 					$nugetUrl = "https://oneget.org/nuget-2.8.5.201.exe"
 					$nugetInstaller = "$env:TEMP\nuget-installer.exe"
-					
+
 					Invoke-WebRequest -Uri $nugetUrl -OutFile $nugetInstaller -UseBasicParsing -ErrorAction Stop
-					
+
 					Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Gray}Installing NuGet provider in PowerShell 5.1 (this may take a moment)..."
 					$installProcess = Start-Process -FilePath $nugetInstaller -ArgumentList "/quiet" -Wait -NoNewWindow -PassThru
-					
+
 					if ($installProcess.ExitCode -eq 0 -or $installProcess.ExitCode -eq $null) {
 						# Give it a moment to register
 						Start-Sleep -Seconds 2
-						
+
 						# Verify installation in PowerShell 5.1
 						$verifyScript = @"
-`$verify = Get-PackageProvider -Name NuGet -ListAvailable -ErrorAction SilentlyContinue | 
-	Where-Object { [version]`$_.Version -ge [version]'2.8.5.201' } | 
+`$verify = Get-PackageProvider -Name NuGet -ListAvailable -ErrorAction SilentlyContinue |
+	Where-Object { [version]`$_.Version -ge [version]'2.8.5.201' } |
 	Select-Object -First 1
 if (`$verify) {
 	Write-Output "SUCCESS:`$(`$verify.Version)"
@@ -454,7 +483,7 @@ if (`$verify) {
 	Write-Output 'VERIFY_FAILED'
 }
 "@
-						
+
 						$verifyResult = & powershell.exe -NoProfile -Command $verifyScript
 						if ($verifyResult -match '^SUCCESS:') {
 							$nugetInstalled = $true
@@ -468,7 +497,7 @@ if (`$verify) {
 					} else {
 						throw "Installer exited with code $($installProcess.ExitCode)"
 					}
-					
+
 					# Clean up
 					Remove-Item $nugetInstaller -Force -ErrorAction SilentlyContinue
 				} catch {
@@ -478,7 +507,7 @@ if (`$verify) {
 						# Determine provider assemblies directory (shared location for both PS versions)
 						$providerPath = "$env:USERPROFILE\AppData\Local\PackageManagement\ProviderAssemblies"
 						$nugetProviderPath = Join-Path $providerPath "nuget"
-						
+
 						# Create directory if it doesn't exist
 						if (!(Test-Path $providerPath)) {
 							New-Item -ItemType Directory -Path $providerPath -Force | Out-Null
@@ -486,26 +515,26 @@ if (`$verify) {
 						if (!(Test-Path $nugetProviderPath)) {
 							New-Item -ItemType Directory -Path $nugetProviderPath -Force | Out-Null
 						}
-						
+
 						# Download NuGet provider package
 						$nugetPackageUrl = "https://www.powershellgallery.com/api/v2/package/NuGet/2.8.5.201"
 						$nugetPackageZip = "$env:TEMP\nuget-provider.zip"
-						
+
 						Invoke-WebRequest -Uri $nugetPackageUrl -OutFile $nugetPackageZip -UseBasicParsing -ErrorAction Stop
 						Expand-Archive -Path $nugetPackageZip -DestinationPath "$env:TEMP\nuget-provider" -Force
-						
+
 						# Copy provider DLL
 						$extractedPath = "$env:TEMP\nuget-provider"
 						$providerDll = Get-ChildItem -Path $extractedPath -Recurse -Filter "Microsoft.PackageManagement.NuGetProvider.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
-						
+
 						if ($providerDll) {
 							Copy-Item -Path $providerDll.FullName -Destination $nugetProviderPath -Force
-							
+
 							# Verify in PowerShell 5.1
 							$verifyScript2 = @"
 Import-PackageProvider -Name NuGet -Force -ErrorAction SilentlyContinue | Out-Null
-`$verify = Get-PackageProvider -Name NuGet -ListAvailable -ErrorAction SilentlyContinue | 
-	Where-Object { [version]`$_.Version -ge [version]'2.8.5.201' } | 
+`$verify = Get-PackageProvider -Name NuGet -ListAvailable -ErrorAction SilentlyContinue |
+	Where-Object { [version]`$_.Version -ge [version]'2.8.5.201' } |
 	Select-Object -First 1
 if (`$verify) {
 	Write-Output "SUCCESS:`$(`$verify.Version)"
@@ -520,7 +549,7 @@ if (`$verify) {
 								Write-ColorText "{Blue}[prerequisite] {Magenta}pwsh: {Green}(success) {Gray}NuGet provider $installedVersion2 installed via package download (PowerShell 5.1)"
 							}
 						}
-						
+
 						# Clean up
 						Remove-Item $nugetPackageZip -Force -ErrorAction SilentlyContinue
 						Remove-Item $extractedPath -Recurse -Force -ErrorAction SilentlyContinue
@@ -529,7 +558,7 @@ if (`$verify) {
 					}
 				}
 			}
-			
+
 			if ($nugetInstalled) {
 				# Retry PSGallery registration in PowerShell 5.1 now that NuGet is available
 				$retryPSGalleryScript = @"
@@ -583,7 +612,7 @@ function Install-PowerShellModule {
 `$module = Get-InstalledModule -Name '$Module' -ErrorAction SilentlyContinue
 if (`$module) { Write-Output 'INSTALLED' } else { Write-Output 'NOT_INSTALLED' }
 "@
-	
+
 	$checkResult = & powershell.exe -NoProfile -Command $ps51CheckScript
 	$moduleInstalled = ($checkResult -eq 'INSTALLED')
 
@@ -591,7 +620,7 @@ if (`$module) { Write-Output 'INSTALLED' } else { Write-Output 'NOT_INSTALLED' }
 		try {
 			# Build Install-Module command for PowerShell 5.1
 			$installCmd = "Install-Module -Name '$Module' -Scope CurrentUser -Force -AllowClobber -SkipPublisherCheck -ErrorAction Stop"
-			
+
 			if ($null -ne $Version) {
 				$installCmd += " -RequiredVersion '$Version'"
 			}
@@ -623,9 +652,9 @@ try {
 	Write-Output "ERROR: `$(`$_.Exception.Message)"
 }
 "@
-			
+
 			$installResult = & powershell.exe -NoProfile -Command $installScript
-			
+
 			if ($installResult -eq 'SUCCESS') {
 				Write-ColorText "{Blue}[module] {Magenta}pwsh: {Green}(success) {Gray}$Module {DarkGray}(installed in PowerShell 5.1)"
 			} elseif ($installResult -eq 'VERIFY_FAILED') {
@@ -641,7 +670,7 @@ try {
 		# Force reinstall
 		try {
 			$installCmd = "Install-Module -Name '$Module' -Scope CurrentUser -Force -AllowClobber -SkipPublisherCheck -ErrorAction Stop"
-			
+
 			if ($null -ne $Version) {
 				$installCmd += " -RequiredVersion '$Version'"
 			}
@@ -673,9 +702,9 @@ try {
 	Write-Output "ERROR: `$(`$_.Exception.Message)"
 }
 "@
-			
+
 			$reinstallResult = & powershell.exe -NoProfile -Command $reinstallScript
-			
+
 			if ($reinstallResult -eq 'SUCCESS') {
 				Write-ColorText "{Blue}[module] {Magenta}pwsh: {Green}(reinstalled) {Gray}$Module {DarkGray}(installed in PowerShell 5.1)"
 			} elseif ($reinstallResult -eq 'VERIFY_FAILED') {
@@ -992,23 +1021,23 @@ $json = Get-Content "$PSScriptRoot\appList.json" -Raw | ConvertFrom-Json
 if (Should-RunSection "Packages") {
 	# Winget Packages
 	Write-TitleBox -Title "WinGet Packages Installation"
-$wingetItem = $json.installSource.winget
-$wingetPkgs = $wingetItem.packageList
-$wingetArgs = $wingetItem.additionalArgs
-$wingetInstall = $wingetItem.autoInstall
+	$wingetItem = $json.installSource.winget
+	$wingetPkgs = $wingetItem.packageList
+	$wingetArgs = $wingetItem.additionalArgs
+	$wingetInstall = $wingetItem.autoInstall
 
-if ($wingetInstall -eq $True) {
-	if (!(Get-Command winget -ErrorAction SilentlyContinue)) {
-		# Use external script to install WinGet and all of its requirements
-		# Source: - https://github.com/asheroto/winget-install
-		Write-Verbose -Message "Installing winget-cli"
-		&([ScriptBlock]::Create((Invoke-RestMethod asheroto.com/winget))) -Force
-	}
+	if ($wingetInstall -eq $True) {
+		if (!(Get-Command winget -ErrorAction SilentlyContinue)) {
+			# Use external script to install WinGet and all of its requirements
+			# Source: - https://github.com/asheroto/winget-install
+			Write-Verbose -Message "Installing winget-cli"
+			&([ScriptBlock]::Create((Invoke-RestMethod asheroto.com/winget))) -Force
+		}
 
-	# Configure winget settings for BETTER PERFORMANCE
-	# Check if settings file exists and compare content before overwriting
-	$settingsPath = "$env:LOCALAPPDATA\Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\LocalState\settings.json"
-	$settingsJson = @'
+		# Configure winget settings for BETTER PERFORMANCE
+		# Check if settings file exists and compare content before overwriting
+		$settingsPath = "$env:LOCALAPPDATA\Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\LocalState\settings.json"
+		$settingsJson = @'
 {
 		"$schema": "https://aka.ms/winget-settings.schema.json",
 
@@ -1034,162 +1063,162 @@ if ($wingetInstall -eq $True) {
 		}
 }
 '@
-	# Normalize JSON for comparison (remove comments and whitespace differences)
-	$normalizeJson = {
-		param($json)
-		# Remove single-line comments
-		$json = $json -replace '//.*', ''
-		# Remove multi-line comments (basic)
-		$json = $json -replace '/\*.*?\*/', ''
-		# Remove extra whitespace
-		$json = ($json -split "`n" | Where-Object { $_.Trim() -ne '' }) -join "`n"
-		return $json.Trim()
-	}
-
-	if ($Force -or !(Test-Path $settingsPath)) {
-		# Create directory if it doesn't exist
-		$settingsDir = Split-Path $settingsPath
-		if (!(Test-Path $settingsDir)) {
-			New-Item $settingsDir -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
+		# Normalize JSON for comparison (remove comments and whitespace differences)
+		$normalizeJson = {
+			param($json)
+			# Remove single-line comments
+			$json = $json -replace '//.*', ''
+			# Remove multi-line comments (basic)
+			$json = $json -replace '/\*.*?\*/', ''
+			# Remove extra whitespace
+			$json = ($json -split "`n" | Where-Object { $_.Trim() -ne '' }) -join "`n"
+			return $json.Trim()
 		}
-		$settingsJson | Out-File $settingsPath -Encoding utf8
-		$script:setupSummary.Created += "WinGet settings"
-		Write-ColorText "{Blue}[config] {Green}(created) {Gray}WinGet settings"
-	} else {
-		$existingContent = Get-Content $settingsPath -Raw -ErrorAction SilentlyContinue
-		$normalizedExisting = & $normalizeJson $existingContent
-		$normalizedNew = & $normalizeJson $settingsJson
 
-		if ($normalizedExisting -ne $normalizedNew) {
-			# Backup existing settings
-			$backupPath = "$settingsPath.backup.$(Get-Date -Format 'yyyyMMdd-HHmmss')"
-			Copy-Item $settingsPath $backupPath -Force -ErrorAction SilentlyContinue
+		if ($Force -or !(Test-Path $settingsPath)) {
+			# Create directory if it doesn't exist
+			$settingsDir = Split-Path $settingsPath
+			if (!(Test-Path $settingsDir)) {
+				New-Item $settingsDir -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
+			}
 			$settingsJson | Out-File $settingsPath -Encoding utf8
-			$script:setupSummary.Updated += "WinGet settings"
-			Write-ColorText "{Blue}[config] {Yellow}(updated) {Gray}WinGet settings {DarkGray}(backup: $backupPath)"
+			$script:setupSummary.Created += "WinGet settings"
+			Write-ColorText "{Blue}[config] {Green}(created) {Gray}WinGet settings"
 		} else {
-			$script:setupSummary.Exists += "WinGet settings"
-			Write-ColorText "{Blue}[config] {Yellow}(exists) {Gray}WinGet settings"
+			$existingContent = Get-Content $settingsPath -Raw -ErrorAction SilentlyContinue
+			$normalizedExisting = & $normalizeJson $existingContent
+			$normalizedNew = & $normalizeJson $settingsJson
+
+			if ($normalizedExisting -ne $normalizedNew) {
+				# Backup existing settings
+				$backupPath = "$settingsPath.backup.$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+				Copy-Item $settingsPath $backupPath -Force -ErrorAction SilentlyContinue
+				$settingsJson | Out-File $settingsPath -Encoding utf8
+				$script:setupSummary.Updated += "WinGet settings"
+				Write-ColorText "{Blue}[config] {Yellow}(updated) {Gray}WinGet settings {DarkGray}(backup: $backupPath)"
+			} else {
+				$script:setupSummary.Exists += "WinGet settings"
+				Write-ColorText "{Blue}[config] {Yellow}(exists) {Gray}WinGet settings"
+			}
 		}
-	}
 
-	# Download packages from WinGet
-	foreach ($pkg in $wingetPkgs) {
-		$pkgId = $pkg.packageId
-		$pkgSource = $pkg.packageSource
-		if ($null -ne $pkgSource) {
-			Install-WinGetApp -PackageID $pkgId -AdditionalArgs $wingetArgs -Source $pkgSource
-		} else {
-			Install-WinGetApp -PackageID $pkgId -AdditionalArgs $wingetArgs
+		# Download packages from WinGet
+		foreach ($pkg in $wingetPkgs) {
+			$pkgId = $pkg.packageId
+			$pkgSource = $pkg.packageSource
+			if ($null -ne $pkgSource) {
+				Install-WinGetApp -PackageID $pkgId -AdditionalArgs $wingetArgs -Source $pkgSource
+			} else {
+				Install-WinGetApp -PackageID $pkgId -AdditionalArgs $wingetArgs
+			}
 		}
-	}
-	Write-LockFile -PackageSource winget -FileName wingetfile.json
-	Refresh ($i++)
-}
-
-############################################################################
-###														CHOCOLATEY PACKAGES 				   						 ###
-############################################################################
-# Chocolatey Packages
-Write-TitleBox -Title "Chocolatey Packages Installation"
-$chocoItem = $json.installSource.choco
-$chocoPkgs = $chocoItem.packageList
-$chocoArgs = $chocoItem.additionalArgs
-$chocoInstall = $chocoItem.autoInstall
-
-if ($chocoInstall -eq $True) {
-	if (!(Get-Command choco -ErrorAction SilentlyContinue)) {
-		# Install chocolatey
-		# Source: - https://chocolatey.org/install
-		Write-Verbose -Message "Installing chocolatey"
-		if ((Get-ExecutionPolicy) -eq "Restricted") { Set-ExecutionPolicy AllSigned }
-		Set-ExecutionPolicy Bypass -Scope Process -Force
-		[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-		Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+		Write-LockFile -PackageSource winget -FileName wingetfile.json
+		Refresh ($i++)
 	}
 
-	foreach ($pkg in $chocoPkgs) {
-		$chocoPkg = $pkg.packageName
-		$chocoVer = $pkg.packageVersion
-		if ($null -ne $chocoVer) {
-			Install-ChocoApp -Package $chocoPkg -Version $chocoVer -AdditionalArgs $chocoArgs
-		} else {
-			Install-ChocoApp -Package $chocoPkg -AdditionalArgs $chocoArgs
+	############################################################################
+	###														CHOCOLATEY PACKAGES 				   						 ###
+	############################################################################
+	# Chocolatey Packages
+	Write-TitleBox -Title "Chocolatey Packages Installation"
+	$chocoItem = $json.installSource.choco
+	$chocoPkgs = $chocoItem.packageList
+	$chocoArgs = $chocoItem.additionalArgs
+	$chocoInstall = $chocoItem.autoInstall
+
+	if ($chocoInstall -eq $True) {
+		if (!(Get-Command choco -ErrorAction SilentlyContinue)) {
+			# Install chocolatey
+			# Source: - https://chocolatey.org/install
+			Write-Verbose -Message "Installing chocolatey"
+			if ((Get-ExecutionPolicy) -eq "Restricted") { Set-ExecutionPolicy AllSigned }
+			Set-ExecutionPolicy Bypass -Scope Process -Force
+			[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+			Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
 		}
-	}
-	Write-LockFile -PackageSource choco -FileName chocolatey.config -OutputPath "$PSScriptRoot\out"
-	Refresh ($i++)
-}
 
-########################################################################
-###														SCOOP PACKAGES 	 							 				 ###
-########################################################################
-# Scoop Packages
-Write-TitleBox -Title "Scoop Packages Installation"
-$scoopItem = $json.installSource.scoop
-$scoopBuckets = $scoopItem.bucketList
-$scoopPkgs = $scoopItem.packageList
-$scoopArgs = $scoopItem.additionalArgs
-$scoopInstall = $scoopItem.autoInstall
-
-if ($scoopInstall -eq $True) {
-	if (!(Get-Command scoop -ErrorAction SilentlyContinue)) {
-		# `scoop` is recommended to be installed from a non-administrative
-		# PowerShell terminal. However, since we are in administrative shell,
-		# it is required to invoke the installer with the `-RunAsAdmin` parameter.
-
-		# Source: - https://github.com/ScoopInstaller/Install#for-admin
-		Write-Verbose -Message "Installing scoop"
-		Invoke-Expression "& {$(Invoke-RestMethod get.scoop.sh)} -RunAsAdmin"
-	}
-
-	# Configure aria2
-	if (!(Get-Command aria2c -ErrorAction SilentlyContinue)) { scoop install aria2 }
-	if (!($(scoop config aria2-enabled) -eq $True)) { scoop config aria2-enabled true }
-	if (!($(scoop config aria2-warning-enabled) -eq $False)) { scoop config aria2-warning-enabled false }
-
-	# Create a scheduled task for aria2 so that it will always be active when we logon the machine
-	# Idea is from: - https://gist.github.com/mikepruett3/7ca6518051383ee14f9cf8ae63ba18a7
-	if (!(Get-ScheduledTaskInfo -TaskName "Aria2RPC" -ErrorAction Ignore)) {
-		try {
-			$scoopDir = (Get-Command scoop.ps1 -ErrorAction SilentlyContinue).Source | Split-Path | Split-Path
-			$Action = New-ScheduledTaskAction -Execute "$scoopDir\apps\aria2\current\aria2c.exe" -Argument "--enable-rpc --rpc-listen-all" -WorkingDirectory "$Env:USERPROFILE\Downloads"
-			$Trigger = New-ScheduledTaskTrigger -AtStartup
-			$Principal = New-ScheduledTaskPrincipal -UserID "$Env:USERDOMAIN\$Env:USERNAME" -LogonType S4U
-			$Settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit 0 -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
-			Register-ScheduledTask -TaskName "Aria2RPC" -Action $Action -Trigger $Trigger -Principal $Principal -Settings $Settings | Out-Null
-		} catch {
-			Write-Error "An error occurred: $_"
+		foreach ($pkg in $chocoPkgs) {
+			$chocoPkg = $pkg.packageName
+			$chocoVer = $pkg.packageVersion
+			if ($null -ne $chocoVer) {
+				Install-ChocoApp -Package $chocoPkg -Version $chocoVer -AdditionalArgs $chocoArgs
+			} else {
+				Install-ChocoApp -Package $chocoPkg -AdditionalArgs $chocoArgs
+			}
 		}
+		Write-LockFile -PackageSource choco -FileName chocolatey.config -OutputPath "$PSScriptRoot\out"
+		Refresh ($i++)
 	}
 
-	# Add scoop buckets
-	foreach ($bucket in $scoopBuckets) {
-		$bucketName = $bucket.bucketName
-		$bucketRepo = $bucket.bucketRepo
-		if ($null -ne $bucketRepo) {
-			Add-ScoopBucket -BucketName $bucketName -BucketRepo $bucketRepo
-		} else {
-			Add-ScoopBucket -BucketName $bucketName
+	########################################################################
+	###														SCOOP PACKAGES 	 							 				 ###
+	########################################################################
+	# Scoop Packages
+	Write-TitleBox -Title "Scoop Packages Installation"
+	$scoopItem = $json.installSource.scoop
+	$scoopBuckets = $scoopItem.bucketList
+	$scoopPkgs = $scoopItem.packageList
+	$scoopArgs = $scoopItem.additionalArgs
+	$scoopInstall = $scoopItem.autoInstall
+
+	if ($scoopInstall -eq $True) {
+		if (!(Get-Command scoop -ErrorAction SilentlyContinue)) {
+			# `scoop` is recommended to be installed from a non-administrative
+			# PowerShell terminal. However, since we are in administrative shell,
+			# it is required to invoke the installer with the `-RunAsAdmin` parameter.
+
+			# Source: - https://github.com/ScoopInstaller/Install#for-admin
+			Write-Verbose -Message "Installing scoop"
+			Invoke-Expression "& {$(Invoke-RestMethod get.scoop.sh)} -RunAsAdmin"
 		}
-	}
 
-	''
+		# Configure aria2
+		if (!(Get-Command aria2c -ErrorAction SilentlyContinue)) { scoop install aria2 }
+		if (!($(scoop config aria2-enabled) -eq $True)) { scoop config aria2-enabled true }
+		if (!($(scoop config aria2-warning-enabled) -eq $False)) { scoop config aria2-warning-enabled false }
 
-	# Install applications from scoop
-	foreach ($pkg in $scoopPkgs) {
-		$pkgName = $pkg.packageName
-		$pkgScope = $pkg.packageScope
-		if (($null -ne $pkgScope) -and ($pkgScope -eq "global")) { $Global = $True } else { $Global = $False }
-		if ($null -ne $scoopArgs) {
-			Install-ScoopApp -Package $pkgName -Global:$Global -AdditionalArgs $scoopArgs
-		} else {
-			Install-ScoopApp -Package $pkgName -Global:$Global
+		# Create a scheduled task for aria2 so that it will always be active when we logon the machine
+		# Idea is from: - https://gist.github.com/mikepruett3/7ca6518051383ee14f9cf8ae63ba18a7
+		if (!(Get-ScheduledTaskInfo -TaskName "Aria2RPC" -ErrorAction Ignore)) {
+			try {
+				$scoopDir = (Get-Command scoop.ps1 -ErrorAction SilentlyContinue).Source | Split-Path | Split-Path
+				$Action = New-ScheduledTaskAction -Execute "$scoopDir\apps\aria2\current\aria2c.exe" -Argument "--enable-rpc --rpc-listen-all" -WorkingDirectory "$Env:USERPROFILE\Downloads"
+				$Trigger = New-ScheduledTaskTrigger -AtStartup
+				$Principal = New-ScheduledTaskPrincipal -UserID "$Env:USERDOMAIN\$Env:USERNAME" -LogonType S4U
+				$Settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit 0 -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+				Register-ScheduledTask -TaskName "Aria2RPC" -Action $Action -Trigger $Trigger -Principal $Principal -Settings $Settings | Out-Null
+			} catch {
+				Write-Error "An error occurred: $_"
+			}
 		}
+
+		# Add scoop buckets
+		foreach ($bucket in $scoopBuckets) {
+			$bucketName = $bucket.bucketName
+			$bucketRepo = $bucket.bucketRepo
+			if ($null -ne $bucketRepo) {
+				Add-ScoopBucket -BucketName $bucketName -BucketRepo $bucketRepo
+			} else {
+				Add-ScoopBucket -BucketName $bucketName
+			}
+		}
+
+		''
+
+		# Install applications from scoop
+		foreach ($pkg in $scoopPkgs) {
+			$pkgName = $pkg.packageName
+			$pkgScope = $pkg.packageScope
+			if (($null -ne $pkgScope) -and ($pkgScope -eq "global")) { $Global = $True } else { $Global = $False }
+			if ($null -ne $scoopArgs) {
+				Install-ScoopApp -Package $pkgName -Global:$Global -AdditionalArgs $scoopArgs
+			} else {
+				Install-ScoopApp -Package $pkgName -Global:$Global
+			}
+		}
+		Write-LockFile -PackageSource scoop -FileName scoopfile.json
+		Refresh ($i++)
 	}
-	Write-LockFile -PackageSource scoop -FileName scoopfile.json
-	Refresh ($i++)
-}
 }
 
 ########################################################################
@@ -1202,51 +1231,51 @@ if (Should-RunSection "PowerShell") {
 	# Initialize prerequisites (TLS, PSGallery, NuGet provider, etc.)
 	Initialize-PowerShellPrerequisites
 
-# Install modules if not installed yet
-$moduleItem = $json.powershell.psmodule
-$moduleList = $moduleItem.moduleList
-$moduleArgs = $moduleItem.additionalArgs
-$moduleInstall = $moduleItem.install
-if ($moduleInstall -eq $True) {
-	foreach ($module in $moduleList) {
-		$mName = $module.moduleName
-		$mVersion = $module.moduleVersion
-		if ($null -ne $mVersion) {
-			Install-PowerShellModule -Module $mName -Version $mVersion -AdditionalArgs $moduleArgs
-		} else {
-			Install-PowerShellModule -Module $mName -AdditionalArgs $moduleArgs
+	# Install modules if not installed yet
+	$moduleItem = $json.powershell.psmodule
+	$moduleList = $moduleItem.moduleList
+	$moduleArgs = $moduleItem.additionalArgs
+	$moduleInstall = $moduleItem.install
+	if ($moduleInstall -eq $True) {
+		foreach ($module in $moduleList) {
+			$mName = $module.moduleName
+			$mVersion = $module.moduleVersion
+			if ($null -ne $mVersion) {
+				Install-PowerShellModule -Module $mName -Version $mVersion -AdditionalArgs $moduleArgs
+			} else {
+				Install-PowerShellModule -Module $mName -AdditionalArgs $moduleArgs
+			}
 		}
+		Write-LockFile -PackageSource modules -FileName modules.json
+		Refresh ($i++)
 	}
-	Write-LockFile -PackageSource modules -FileName modules.json
-	Refresh ($i++)
-}
 
-# Install PowerShell modules required by Profile.ps1
-# Note: These modules are installed in PowerShell 5.1, not PowerShell 7.x
-# Commented out due to installation failures (NuGet provider issue):
-Write-ColorText "{Blue}[module] {Magenta}pwsh: {Gray}Installing profile-required modules (PowerShell 5.1)..."
-$profileRequiredModules = @(
-	# "BurntToast",
-	# "Microsoft.PowerShell.SecretManagement",
-	# "Microsoft.PowerShell.SecretStore",
-	# "PSScriptTools",
-	# "PSFzf",
-	# "CompletionPredictor"
-)
+	# Install PowerShell modules required by Profile.ps1
+	# Note: These modules are installed in PowerShell 5.1, not PowerShell 7.x
+	# Commented out due to installation failures (NuGet provider issue):
+	Write-ColorText "{Blue}[module] {Magenta}pwsh: {Gray}Installing profile-required modules (PowerShell 5.1)..."
+	$profileRequiredModules = @(
+		# "BurntToast",
+		# "Microsoft.PowerShell.SecretManagement",
+		# "Microsoft.PowerShell.SecretStore",
+		# "PSScriptTools",
+		# "PSFzf",
+		# "CompletionPredictor"
+	)
 
-foreach ($module in $profileRequiredModules) {
-	# Check if module is installed in PowerShell 5.1
-	$checkScript = @"
+	foreach ($module in $profileRequiredModules) {
+		# Check if module is installed in PowerShell 5.1
+		$checkScript = @"
 `$module = Get-InstalledModule -Name '$module' -ErrorAction SilentlyContinue
 if (`$module) { Write-Output 'INSTALLED' } else { Write-Output 'NOT_INSTALLED' }
 "@
-	
-	$checkResult = & powershell.exe -NoProfile -Command $checkScript
-	$moduleInstalled = ($checkResult -eq 'INSTALLED')
-	
-	if ($Force -or !$moduleInstalled) {
-		try {
-			$installScript = @"
+
+		$checkResult = & powershell.exe -NoProfile -Command $checkScript
+		$moduleInstalled = ($checkResult -eq 'INSTALLED')
+
+		if ($Force -or !$moduleInstalled) {
+			try {
+				$installScript = @"
 try {
 	[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 	Install-Module -Name '$module' -Scope CurrentUser -Force -AllowClobber -SkipPublisherCheck -ErrorAction Stop
@@ -1256,88 +1285,88 @@ try {
 	Write-Output "ERROR:`$(`$_.Exception.Message)"
 }
 "@
-			$installResult = & powershell.exe -NoProfile -Command $installScript
-			
-			if ($installResult -eq 'SUCCESS') {
-				Write-ColorText "{Blue}[module] {Magenta}pwsh: {Green}(success) {Gray}$module {DarkGray}(installed in PowerShell 5.1)"
-			} elseif ($installResult -eq 'VERIFY_FAILED') {
-				throw "Module installation completed but verification failed"
-			} else {
-				$errorMsg = $installResult -replace 'ERROR:', ''
-				throw $errorMsg
-			}
-		} catch {
-			Write-ColorText "{Blue}[module] {Magenta}pwsh: {Red}(failed) {Gray}$module {DarkGray}Error: $_"
-			$script:setupSummary.Failed += "PowerShell Module: $module"
-		}
-	} else {
-		Write-ColorText "{Blue}[module] {Magenta}pwsh: {Yellow}(exists) {Gray}$module {DarkGray}(in PowerShell 5.1)"
-	}
-}
-Refresh ($i++)
+				$installResult = & powershell.exe -NoProfile -Command $installScript
 
-# Enable powershell experimental features
-$feature = $json.powershell.psexperimentalfeature
-$featureEnable = $feature.enable
-$featureList = $feature.featureList
-
-if ($featureEnable -eq $True) {
-	if (!(Get-Command Get-ExperimentalFeature -ErrorAction SilentlyContinue)) { return }
-
-	''
-	$featuresEnabled = @()
-	foreach ($f in $featureList) {
-		$featureExists = Get-ExperimentalFeature -Name $f -ErrorAction SilentlyContinue
-		if ($null -eq $featureExists) {
-			Write-ColorText "{Blue}[experimental feature] {Magenta}pwsh: {Red}(not found) {Gray}$f"
-			continue
-		}
-		
-		if ($Force -or ($featureExists.Enabled -eq $False)) {
-			try {
-				$result = Enable-ExperimentalFeature -Name $f -Scope CurrentUser -ErrorAction Stop
-				if ($result.Enabled -eq $True) {
-					Write-ColorText "{Blue}[experimental feature] {Magenta}pwsh: {Green}(success) {Gray}$f"
-					$featuresEnabled += $f
+				if ($installResult -eq 'SUCCESS') {
+					Write-ColorText "{Blue}[module] {Magenta}pwsh: {Green}(success) {Gray}$module {DarkGray}(installed in PowerShell 5.1)"
+				} elseif ($installResult -eq 'VERIFY_FAILED') {
+					throw "Module installation completed but verification failed"
 				} else {
-					Write-ColorText "{Blue}[experimental feature] {Magenta}pwsh: {Yellow}(pending) {Gray}$f {DarkGray}(restart required)"
-					$featuresEnabled += $f
+					$errorMsg = $installResult -replace 'ERROR:', ''
+					throw $errorMsg
 				}
 			} catch {
-				Write-ColorText "{Blue}[experimental feature] {Magenta}pwsh: {Red}(failed) {Gray}$f {DarkGray}Error: $_"
-				$script:setupSummary.Failed += "PowerShell Experimental Feature: $f"
+				Write-ColorText "{Blue}[module] {Magenta}pwsh: {Red}(failed) {Gray}$module {DarkGray}Error: $_"
+				$script:setupSummary.Failed += "PowerShell Module: $module"
 			}
 		} else {
-			Write-ColorText "{Blue}[experimental feature] {Magenta}pwsh: {Yellow}(enabled) {Gray}$f"
+			Write-ColorText "{Blue}[module] {Magenta}pwsh: {Yellow}(exists) {Gray}$module {DarkGray}(in PowerShell 5.1)"
 		}
 	}
+	Refresh ($i++)
 
-	if ($featuresEnabled.Count -gt 0) {
-		Write-ColorText "{Yellow}[!] {Gray}PowerShell restart required for experimental features to take effect: {Cyan}$($featuresEnabled -join ', ')"
-		Write-ColorText "{Yellow}[!] {Gray}After restart, you may need to install dependent modules (e.g., CompletionPredictor for PSSubsystemPluginModel)"
-		
-		# Attempt to install CompletionPredictor if PSSubsystemPluginModel was enabled
-		# Note: This may fail until PowerShell is restarted, which is expected
-		if ($featuresEnabled -contains "PSSubsystemPluginModel") {
-			''
-			Write-ColorText "{Blue}[module] {Magenta}pwsh: {Gray}Attempting to install CompletionPredictor (may require restart first)..."
-			$completionPredictorInstalled = Get-Module -ListAvailable -Name "CompletionPredictor" -ErrorAction SilentlyContinue
-			if ($Force -or !$completionPredictorInstalled) {
+	# Enable powershell experimental features
+	$feature = $json.powershell.psexperimentalfeature
+	$featureEnable = $feature.enable
+	$featureList = $feature.featureList
+
+	if ($featureEnable -eq $True) {
+		if (!(Get-Command Get-ExperimentalFeature -ErrorAction SilentlyContinue)) { return }
+
+		''
+		$featuresEnabled = @()
+		foreach ($f in $featureList) {
+			$featureExists = Get-ExperimentalFeature -Name $f -ErrorAction SilentlyContinue
+			if ($null -eq $featureExists) {
+				Write-ColorText "{Blue}[experimental feature] {Magenta}pwsh: {Red}(not found) {Gray}$f"
+				continue
+			}
+
+			if ($Force -or ($featureExists.Enabled -eq $False)) {
 				try {
-					Install-Module -Name "CompletionPredictor" -Scope CurrentUser -Force -AllowClobber -SkipPublisherCheck -ErrorAction Stop
-					Write-ColorText "{Blue}[module] {Magenta}pwsh: {Green}(success) {Gray}CompletionPredictor"
+					$result = Enable-ExperimentalFeature -Name $f -Scope CurrentUser -ErrorAction Stop
+					if ($result.Enabled -eq $True) {
+						Write-ColorText "{Blue}[experimental feature] {Magenta}pwsh: {Green}(success) {Gray}$f"
+						$featuresEnabled += $f
+					} else {
+						Write-ColorText "{Blue}[experimental feature] {Magenta}pwsh: {Yellow}(pending) {Gray}$f {DarkGray}(restart required)"
+						$featuresEnabled += $f
+					}
 				} catch {
-					Write-ColorText "{Blue}[module] {Magenta}pwsh: {Yellow}(skipped) {Gray}CompletionPredictor {DarkGray}(Install after PowerShell restart)"
-					Write-ColorText "{DarkGray}   Run: Install-Module -Name CompletionPredictor"
+					Write-ColorText "{Blue}[experimental feature] {Magenta}pwsh: {Red}(failed) {Gray}$f {DarkGray}Error: $_"
+					$script:setupSummary.Failed += "PowerShell Experimental Feature: $f"
 				}
 			} else {
-				Write-ColorText "{Blue}[module] {Magenta}pwsh: {Yellow}(exists) {Gray}CompletionPredictor"
+				Write-ColorText "{Blue}[experimental feature] {Magenta}pwsh: {Yellow}(enabled) {Gray}$f"
 			}
 		}
-	}
 
-	Refresh ($i++)
-}
+		if ($featuresEnabled.Count -gt 0) {
+			Write-ColorText "{Yellow}[!] {Gray}PowerShell restart required for experimental features to take effect: {Cyan}$($featuresEnabled -join ', ')"
+			Write-ColorText "{Yellow}[!] {Gray}After restart, you may need to install dependent modules (e.g., CompletionPredictor for PSSubsystemPluginModel)"
+
+			# Attempt to install CompletionPredictor if PSSubsystemPluginModel was enabled
+			# Note: This may fail until PowerShell is restarted, which is expected
+			if ($featuresEnabled -contains "PSSubsystemPluginModel") {
+				''
+				Write-ColorText "{Blue}[module] {Magenta}pwsh: {Gray}Attempting to install CompletionPredictor (may require restart first)..."
+				$completionPredictorInstalled = Get-Module -ListAvailable -Name "CompletionPredictor" -ErrorAction SilentlyContinue
+				if ($Force -or !$completionPredictorInstalled) {
+					try {
+						Install-Module -Name "CompletionPredictor" -Scope CurrentUser -Force -AllowClobber -SkipPublisherCheck -ErrorAction Stop
+						Write-ColorText "{Blue}[module] {Magenta}pwsh: {Green}(success) {Gray}CompletionPredictor"
+					} catch {
+						Write-ColorText "{Blue}[module] {Magenta}pwsh: {Yellow}(skipped) {Gray}CompletionPredictor {DarkGray}(Install after PowerShell restart)"
+						Write-ColorText "{DarkGray}   Run: Install-Module -Name CompletionPredictor"
+					}
+				} else {
+					Write-ColorText "{Blue}[module] {Magenta}pwsh: {Yellow}(exists) {Gray}CompletionPredictor"
+				}
+			}
+		}
+
+		Refresh ($i++)
+	}
 }
 
 ######################################################################
@@ -1349,11 +1378,11 @@ if (Should-RunSection "Git") {
 	if (Get-Command git -ErrorAction SilentlyContinue) {
 		$gitUserName = (git config user.name)
 		$gitUserMail = (git config user.email)
-		
+
 		# Original author's information - prompt to change if these are detected
 		$originalAuthorName = "Jacquin Moon"
 		$originalAuthorEmail = "jacquindev@outlook.com"
-		
+
 		# Check if current values match original author's (should be changed by user)
 		$isOriginalAuthor = ($gitUserName -eq $originalAuthorName) -or ($gitUserMail -eq $originalAuthorEmail)
 
@@ -1393,8 +1422,8 @@ if (Should-RunSection "Git") {
 		if ($Force) {
 			Write-ColorText "{Yellow}Force mode: Re-authenticating GitHub CLI..."
 			gh auth login
-		} elseif (!(gh auth status)) { 
-			gh auth login 
+		} elseif (!(gh auth status)) {
+			gh auth login
 		}
 	}
 
@@ -1402,7 +1431,7 @@ if (Should-RunSection "Git") {
 	$yasbConfigPath = Join-Path $PSScriptRoot "config\config\yasb"
 	$yasbEnvPath = Join-Path $yasbConfigPath ".env"
 	$existingToken = [System.Environment]::GetEnvironmentVariable("YASB_GITHUB_TOKEN")
-	
+
 	if ($Force -or (!$existingToken -and !(Test-Path $yasbEnvPath))) {
 		if ($Force -and ($existingToken -or (Test-Path $yasbEnvPath))) {
 			Write-ColorText "{Yellow}Force mode: Re-prompting for YASB GitHub token..."
@@ -1413,21 +1442,21 @@ if (Should-RunSection "Git") {
 		Write-ColorText "{DarkGray}   Required scopes: notifications (read)"
 		Write-ColorText "{DarkGray}   See .env.example in config/config/yasb/ for manual setup instructions"
 		Write-ColorText ""
-		
+
 		$setupToken = $(Write-Host "Setup YASB_GITHUB_TOKEN? [y/N]: " -NoNewline -ForegroundColor Magenta; Read-Host)
 		if ($setupToken.ToUpper() -eq 'Y') {
 			$tokenValue = $(Write-Host "Enter your GitHub Personal Access Token: " -NoNewline -ForegroundColor Magenta; Read-Host -AsSecureString)
 			$tokenPlainText = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
 				[Runtime.InteropServices.Marshal]::SecureStringToBSTR($tokenValue)
 			)
-			
+
 			if ($tokenPlainText) {
 				Write-ColorText ""
 				Write-ColorText "{DarkGray}   Choose storage method:"
 				Write-ColorText "{DarkGray}   1) Environment variable (recommended, system-wide)"
 				Write-ColorText "{DarkGray}   2) .env file (local to yasb folder)"
 				$storageChoice = $(Write-Host "Storage method [1/2]: " -NoNewline -ForegroundColor Magenta; Read-Host)
-				
+
 				if ($storageChoice -eq "1" -or $storageChoice -eq "") {
 					# Set as environment variable
 					try {
@@ -1453,7 +1482,7 @@ if (Should-RunSection "Git") {
 				} else {
 					Write-ColorText "{Blue}[github] {Magenta}YASB: {Yellow}(skipped) {Gray}Invalid choice, token not saved"
 				}
-				
+
 				# Clear the plaintext token from memory
 				$tokenPlainText = $null
 			} else {
@@ -1518,172 +1547,172 @@ if (Should-RunSection "Symlinks") {
 	# symlinks
 	Write-TitleBox -Title "Add symbolic links for dotfiles"
 
-# Create PowerShell profile symlinks for all user-specific profiles
-# This handles OneDrive redirection automatically since $PROFILE paths reflect the actual location
-Write-ColorText "{Blue}[symlink] {Gray}Setting up PowerShell profile symlinks..."
+	# Create PowerShell profile symlinks for all user-specific profiles
+	# This handles OneDrive redirection automatically since $PROFILE paths reflect the actual location
+	Write-ColorText "{Blue}[symlink] {Gray}Setting up PowerShell profile symlinks..."
 
-# PowerShell Profile Symlinks - Separate handling for PowerShell 7.x and 5.1
-# PowerShell 7.x profiles link to pwsh/Profile.ps1
-# PowerShell 5.1 profiles link to powershell/WindowsProfile.ps1
+	# PowerShell Profile Symlinks - Separate handling for PowerShell 7.x and 5.1
+	# PowerShell 7.x profiles link to pwsh/Profile.ps1
+	# PowerShell 5.1 profiles link to powershell/WindowsProfile.ps1
 
-$pwshProfileSource = "$PSScriptRoot\pwsh\Profile.ps1"
-$ps51ProfileSource = "$PSScriptRoot\powershell\WindowsProfile.ps1"
+	$pwshProfileSource = "$PSScriptRoot\pwsh\Profile.ps1"
+	$ps51ProfileSource = "$PSScriptRoot\powershell\WindowsProfile.ps1"
 
-$profilePaths = @()
+	$profilePaths = @()
 
-# PowerShell 7+ profiles (pwsh) - Link to pwsh/Profile.ps1
-if (Test-Path $pwshProfileSource) {
-	try {
-		$pwshProfile = $PROFILE
-		if ($pwshProfile -and $pwshProfile.CurrentUserAllHosts) {
-			$profileDir = Split-Path $pwshProfile.CurrentUserAllHosts
-			
-			# Current User, All Hosts (PowerShell 7)
-			$profilePaths += @{
-				Path = $pwshProfile.CurrentUserAllHosts
-				Name = "PowerShell 7 - CurrentUserAllHosts"
-				Source = $pwshProfileSource
-			}
-			
-			# Explicitly add VSCode profile path (same directory, different filename)
-			# This ensures VSCode profile is created even when Setup.ps1 is run from a different host
-			$vscodeProfilePath = Join-Path $profileDir "Microsoft.VSCode_profile.ps1"
-			$profilePaths += @{
-				Path = $vscodeProfilePath
-				Name = "PowerShell 7 - Microsoft.VSCode_profile.ps1 (VSCode)"
-				Source = $pwshProfileSource
-			}
-			
-			# Current User, Current Host (for the current host running Setup.ps1)
-			# Only add if it's different from the profiles we've already added (to avoid duplicates)
-			if ($pwshProfile.CurrentUserCurrentHost -and 
-				$pwshProfile.CurrentUserCurrentHost -ne $pwshProfile.CurrentUserAllHosts -and
-				$pwshProfile.CurrentUserCurrentHost -ne $vscodeProfilePath) {
+	# PowerShell 7+ profiles (pwsh) - Link to pwsh/Profile.ps1
+	if (Test-Path $pwshProfileSource) {
+		try {
+			$pwshProfile = $PROFILE
+			if ($pwshProfile -and $pwshProfile.CurrentUserAllHosts) {
+				$profileDir = Split-Path $pwshProfile.CurrentUserAllHosts
+
+				# Current User, All Hosts (PowerShell 7)
 				$profilePaths += @{
-					Path = $pwshProfile.CurrentUserCurrentHost
-					Name = "PowerShell 7 - CurrentUserCurrentHost ($($Host.Name))"
+					Path   = $pwshProfile.CurrentUserAllHosts
+					Name   = "PowerShell 7 - CurrentUserAllHosts"
 					Source = $pwshProfileSource
 				}
-			}
-		}
-	} catch {
-		Write-ColorText "{Yellow}[symlink] {Gray}PowerShell 7 profiles not available: $_"
-	}
-} else {
-	Write-ColorText "{Yellow}[symlink] {Gray}PowerShell 7 profile source not found: $pwshProfileSource"
-}
 
-# Windows PowerShell 5.1 profiles - Link to powershell/WindowsProfile.ps1
-if (Test-Path $ps51ProfileSource) {
-	try {
-		# Check if we're in PowerShell 5.1 or if we need to check Windows PowerShell paths
-		$ps51Paths = @(
-			"$([Environment]::GetFolderPath('MyDocuments'))\WindowsPowerShell\Microsoft.PowerShell_profile.ps1",
-			"$([Environment]::GetFolderPath('MyDocuments'))\WindowsPowerShell\profile.ps1"
-		)
-		
-		foreach ($ps51Path in $ps51Paths) {
-			$profileDir = Split-Path $ps51Path
-			if (Test-Path $profileDir -PathType Container) {
+				# Explicitly add VSCode profile path (same directory, different filename)
+				# This ensures VSCode profile is created even when Setup.ps1 is run from a different host
+				$vscodeProfilePath = Join-Path $profileDir "Microsoft.VSCode_profile.ps1"
 				$profilePaths += @{
-					Path = $ps51Path
-					Name = "Windows PowerShell 5.1 - $(Split-Path $ps51Path -Leaf)"
-					Source = $ps51ProfileSource
+					Path   = $vscodeProfilePath
+					Name   = "PowerShell 7 - Microsoft.VSCode_profile.ps1 (VSCode)"
+					Source = $pwshProfileSource
+				}
+
+				# Current User, Current Host (for the current host running Setup.ps1)
+				# Only add if it's different from the profiles we've already added (to avoid duplicates)
+				if ($pwshProfile.CurrentUserCurrentHost -and
+					$pwshProfile.CurrentUserCurrentHost -ne $pwshProfile.CurrentUserAllHosts -and
+					$pwshProfile.CurrentUserCurrentHost -ne $vscodeProfilePath) {
+					$profilePaths += @{
+						Path   = $pwshProfile.CurrentUserCurrentHost
+						Name   = "PowerShell 7 - CurrentUserCurrentHost ($($Host.Name))"
+						Source = $pwshProfileSource
+					}
 				}
 			}
+		} catch {
+			Write-ColorText "{Yellow}[symlink] {Gray}PowerShell 7 profiles not available: $_"
 		}
-	} catch {
-		Write-ColorText "{Yellow}[symlink] {Gray}Windows PowerShell 5.1 profiles check failed: $_"
+	} else {
+		Write-ColorText "{Yellow}[symlink] {Gray}PowerShell 7 profile source not found: $pwshProfileSource"
 	}
-} else {
-	Write-ColorText "{Yellow}[symlink] {Gray}PowerShell 5.1 profile source not found: $ps51ProfileSource"
-}
 
-# Create symlinks for each profile path
-foreach ($profileInfo in $profilePaths) {
-	$profilePath = $profileInfo.Path
-	$profileName = $profileInfo.Name
-	$sourcePath = $profileInfo.Source
-	
-	# Ensure the directory exists
-	$profileDir = Split-Path $profilePath
-	if (!(Test-Path $profileDir)) {
-		New-Item $profileDir -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
-		Write-ColorText "{Blue}[directory] {Green}(created) {Gray}$profileDir"
+	# Windows PowerShell 5.1 profiles - Link to powershell/WindowsProfile.ps1
+	if (Test-Path $ps51ProfileSource) {
+		try {
+			# Check if we're in PowerShell 5.1 or if we need to check Windows PowerShell paths
+			$ps51Paths = @(
+				"$([Environment]::GetFolderPath('MyDocuments'))\WindowsPowerShell\Microsoft.PowerShell_profile.ps1",
+				"$([Environment]::GetFolderPath('MyDocuments'))\WindowsPowerShell\profile.ps1"
+			)
+
+			foreach ($ps51Path in $ps51Paths) {
+				$profileDir = Split-Path $ps51Path
+				if (Test-Path $profileDir -PathType Container) {
+					$profilePaths += @{
+						Path   = $ps51Path
+						Name   = "Windows PowerShell 5.1 - $(Split-Path $ps51Path -Leaf)"
+						Source = $ps51ProfileSource
+					}
+				}
+			}
+		} catch {
+			Write-ColorText "{Yellow}[symlink] {Gray}Windows PowerShell 5.1 profiles check failed: $_"
+		}
+	} else {
+		Write-ColorText "{Yellow}[symlink] {Gray}PowerShell 5.1 profile source not found: $ps51ProfileSource"
 	}
-	
-	# Create or update symlink
-	if (Test-Path $profilePath) {
-		$existingProfile = Get-Item $profilePath -ErrorAction SilentlyContinue
-		if ($existingProfile.LinkType -eq 'SymbolicLink') {
-			$targetPath = $existingProfile.Target
-			if ($targetPath -ne $sourcePath) {
-				# Wrong target, update it
-				Remove-Item $profilePath -Force -ErrorAction SilentlyContinue
-				New-Item -ItemType SymbolicLink -Path $profilePath -Target $sourcePath -Force -ErrorAction SilentlyContinue | Out-Null
-				$script:setupSummary.Updated += $profileName
-				Write-ColorText "{Blue}[symlink] {Yellow}(updated) {Green}$sourcePath {Yellow}--> {Gray}$profilePath {DarkGray}[$profileName]"
+
+	# Create symlinks for each profile path
+	foreach ($profileInfo in $profilePaths) {
+		$profilePath = $profileInfo.Path
+		$profileName = $profileInfo.Name
+		$sourcePath = $profileInfo.Source
+
+		# Ensure the directory exists
+		$profileDir = Split-Path $profilePath
+		if (!(Test-Path $profileDir)) {
+			New-Item $profileDir -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
+			Write-ColorText "{Blue}[directory] {Green}(created) {Gray}$profileDir"
+		}
+
+		# Create or update symlink
+		if (Test-Path $profilePath) {
+			$existingProfile = Get-Item $profilePath -ErrorAction SilentlyContinue
+			if ($existingProfile.LinkType -eq 'SymbolicLink') {
+				$targetPath = $existingProfile.Target
+				if ($targetPath -ne $sourcePath) {
+					# Wrong target, update it
+					Remove-Item $profilePath -Force -ErrorAction SilentlyContinue
+					New-Item -ItemType SymbolicLink -Path $profilePath -Target $sourcePath -Force -ErrorAction SilentlyContinue | Out-Null
+					$script:setupSummary.Updated += $profileName
+					Write-ColorText "{Blue}[symlink] {Yellow}(updated) {Green}$sourcePath {Yellow}--> {Gray}$profilePath {DarkGray}[$profileName]"
+				} else {
+					# Correct target, skip
+					$script:setupSummary.Exists += $profileName
+					Write-ColorText "{Blue}[symlink] {Yellow}(exists) {Gray}$profilePath {DarkGray}[$profileName]"
+				}
 			} else {
-				# Correct target, skip
-				$script:setupSummary.Exists += $profileName
-				Write-ColorText "{Blue}[symlink] {Yellow}(exists) {Gray}$profilePath {DarkGray}[$profileName]"
+				# Backup existing profile
+				if ($Force) {
+					$backupPath = "$profilePath.backup.$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+					Write-ColorText "{Yellow}[symlink] {Gray}Backing up existing profile: $backupPath"
+					Copy-Item $profilePath $backupPath -Force -ErrorAction SilentlyContinue
+					Remove-Item $profilePath -Force -ErrorAction SilentlyContinue
+					New-Item -ItemType SymbolicLink -Path $profilePath -Target $sourcePath -Force -ErrorAction SilentlyContinue | Out-Null
+					$script:setupSummary.Updated += $profileName
+					Write-ColorText "{Blue}[symlink] {Green}(created) {Green}$sourcePath {Yellow}--> {Gray}$profilePath {DarkGray}[$profileName]"
+				} else {
+					$script:setupSummary.Skipped += "$profileName (exists as regular file, use -Force to replace)"
+					Write-ColorText "{Yellow}[symlink] {Gray}Skipped $profileName (exists, use -Force to replace)"
+				}
 			}
 		} else {
-			# Backup existing profile
-			if ($Force) {
-				$backupPath = "$profilePath.backup.$(Get-Date -Format 'yyyyMMdd-HHmmss')"
-				Write-ColorText "{Yellow}[symlink] {Gray}Backing up existing profile: $backupPath"
-				Copy-Item $profilePath $backupPath -Force -ErrorAction SilentlyContinue
-				Remove-Item $profilePath -Force -ErrorAction SilentlyContinue
-				New-Item -ItemType SymbolicLink -Path $profilePath -Target $sourcePath -Force -ErrorAction SilentlyContinue | Out-Null
-				$script:setupSummary.Updated += $profileName
-				Write-ColorText "{Blue}[symlink] {Green}(created) {Green}$sourcePath {Yellow}--> {Gray}$profilePath {DarkGray}[$profileName]"
-			} else {
-				$script:setupSummary.Skipped += "$profileName (exists as regular file, use -Force to replace)"
-				Write-ColorText "{Yellow}[symlink] {Gray}Skipped $profileName (exists, use -Force to replace)"
-			}
+			# Create new symlink
+			New-Item -ItemType SymbolicLink -Path $profilePath -Target $sourcePath -Force -ErrorAction SilentlyContinue | Out-Null
+			$script:setupSummary.Created += $profileName
+			Write-ColorText "{Blue}[symlink] {Green}(created) {Green}$sourcePath {Yellow}--> {Gray}$profilePath {DarkGray}[$profileName]"
 		}
-	} else {
-		# Create new symlink
-		New-Item -ItemType SymbolicLink -Path $profilePath -Target $sourcePath -Force -ErrorAction SilentlyContinue | Out-Null
-		$script:setupSummary.Created += $profileName
-		Write-ColorText "{Blue}[symlink] {Green}(created) {Green}$sourcePath {Yellow}--> {Gray}$profilePath {DarkGray}[$profileName]"
 	}
-}
 
-if ($profilePaths.Count -eq 0) {
-	Write-ColorText "{Yellow}[symlink] {Gray}No PowerShell profiles found to link"
-}
-
-# Copy AppData folder contents (system directories work better with copies)
-Write-ColorText "{Blue}[copy] {Gray}Copying AppData configuration files..."
-Copy-ConfigFiles -Source "$PSScriptRoot\config\AppData" -Destination "$env:USERPROFILE\AppData" -Recurse
-
-# Copy home folder contents to user root profile (if any files exist)
-if (Test-Path "$PSScriptRoot\config\home" -PathType Container) {
-	$homeFiles = Get-ChildItem "$PSScriptRoot\config\home" -Recurse -File -ErrorAction SilentlyContinue
-	if ($homeFiles.Count -gt 0) {
-		Write-ColorText "{Blue}[copy] {Gray}Copying home folder files to user profile..."
-		Copy-ConfigFiles -Source "$PSScriptRoot\config\home" -Destination "$env:USERPROFILE" -Recurse
-	} else {
-		Write-ColorText "{Blue}[copy] {Yellow}(skipped) {Gray}Home folder is empty, nothing to copy"
+	if ($profilePaths.Count -eq 0) {
+		Write-ColorText "{Yellow}[symlink] {Gray}No PowerShell profiles found to link"
 	}
-}
 
-# Create symlink for config directory (this works well as a symlink)
-New-SymbolicLinks -Source "$PSScriptRoot\config\config" -Destination "$env:USERPROFILE\.config" -Recurse
+	# Copy AppData folder contents (system directories work better with copies)
+	Write-ColorText "{Blue}[copy] {Gray}Copying AppData configuration files..."
+	Copy-ConfigFiles -Source "$PSScriptRoot\config\AppData" -Destination "$env:USERPROFILE\AppData" -Recurse
 
-# Copy windows folder contents to Pictures directory
-if (Test-Path "$PSScriptRoot\windows" -PathType Container) {
-	Write-ColorText "{Blue}[copy] {Gray}Copying windows folder contents to Pictures..."
-	$picturesPath = [Environment]::GetFolderPath("MyPictures")
-	if (Test-Path $picturesPath) {
-		Copy-ConfigFiles -Source "$PSScriptRoot\windows" -Destination $picturesPath -Recurse
-	} else {
-		Write-ColorText "{Yellow}[copy] {Gray}Pictures folder not found, skipping windows folder copy"
-		$script:setupSummary.Skipped += "Windows folder (Pictures directory not found)"
+	# Copy home folder contents to user root profile (if any files exist)
+	if (Test-Path "$PSScriptRoot\config\home" -PathType Container) {
+		$homeFiles = Get-ChildItem "$PSScriptRoot\config\home" -Recurse -File -ErrorAction SilentlyContinue
+		if ($homeFiles.Count -gt 0) {
+			Write-ColorText "{Blue}[copy] {Gray}Copying home folder files to user profile..."
+			Copy-ConfigFiles -Source "$PSScriptRoot\config\home" -Destination "$env:USERPROFILE" -Recurse
+		} else {
+			Write-ColorText "{Blue}[copy] {Yellow}(skipped) {Gray}Home folder is empty, nothing to copy"
+		}
 	}
-}
+
+	# Create symlink for config directory (this works well as a symlink)
+	New-SymbolicLinks -Source "$PSScriptRoot\config\config" -Destination "$env:USERPROFILE\.config" -Recurse
+
+	# Copy windows folder contents to Pictures directory
+	if (Test-Path "$PSScriptRoot\windows" -PathType Container) {
+		Write-ColorText "{Blue}[copy] {Gray}Copying windows folder contents to Pictures..."
+		$picturesPath = [Environment]::GetFolderPath("MyPictures")
+		if (Test-Path $picturesPath) {
+			Copy-ConfigFiles -Source "$PSScriptRoot\windows" -Destination $picturesPath -Recurse
+		} else {
+			Write-ColorText "{Yellow}[copy] {Gray}Pictures folder not found, skipping windows folder copy"
+			$script:setupSummary.Skipped += "Windows folder (Pictures directory not found)"
+		}
+	}
 
 	Refresh ($i++)
 
@@ -1703,159 +1732,159 @@ if (Test-Path "$PSScriptRoot\windows" -PathType Container) {
 if (Should-RunSection "Environment") {
 	Write-TitleBox -Title "Set Environment Variables"
 
-# Set DOTFILES and DOTPOSH environment variables for windots
-$dotfilesValue = [System.Environment]::GetEnvironmentVariable("DOTFILES")
-if ($Force -or !$dotfilesValue) {
-	try {
-		[System.Environment]::SetEnvironmentVariable("DOTFILES", "$PSScriptRoot", "User")
-		# Also update in current session immediately
-		$Env:DOTFILES = $PSScriptRoot
-		if ($dotfilesValue) {
-			$script:setupSummary.Updated += "DOTFILES environment variable"
-			Write-ColorText "{Blue}[environment] {Yellow}(updated) {Magenta}DOTFILES {Yellow}--> {Gray}$PSScriptRoot"
-		} else {
-			$script:setupSummary.Created += "DOTFILES environment variable"
-			Write-ColorText "{Blue}[environment] {Green}(added) {Magenta}DOTFILES {Yellow}--> {Gray}$PSScriptRoot"
-		}
-	} catch {
-		$script:setupSummary.Failed += "DOTFILES environment variable"
-		Write-Error -ErrorAction Stop "An error occurred setting DOTFILES: $_"
-	}
-} else {
-	$script:setupSummary.Exists += "DOTFILES environment variable"
-	Write-ColorText "{Blue}[environment] {Yellow}(exists) {Magenta}DOTFILES {Yellow}--> {Gray}$dotfilesValue"
-}
-
-$dotposhValue = [System.Environment]::GetEnvironmentVariable("DOTPOSH")
-$dotposhPath = Join-Path -Path "$PSScriptRoot" -ChildPath "dotposh"
-if ($Force -or !$dotposhValue) {
-	try {
-		[System.Environment]::SetEnvironmentVariable("DOTPOSH", "$dotposhPath", "User")
-		if ($dotposhValue) {
-			$script:setupSummary.Updated += "DOTPOSH environment variable"
-			Write-ColorText "{Blue}[environment] {Yellow}(updated) {Magenta}DOTPOSH {Yellow}--> {Gray}$dotposhPath"
-		} else {
-			$script:setupSummary.Created += "DOTPOSH environment variable"
-			Write-ColorText "{Blue}[environment] {Green}(added) {Magenta}DOTPOSH {Yellow}--> {Gray}$dotposhPath"
-		}
-	} catch {
-		$script:setupSummary.Failed += "DOTPOSH environment variable"
-		Write-Error -ErrorAction Stop "An error occurred setting DOTPOSH: $_"
-	}
-} else {
-	$script:setupSummary.Exists += "DOTPOSH environment variable"
-	Write-ColorText "{Blue}[environment] {Yellow}(exists) {Magenta}DOTPOSH {Yellow}--> {Gray}$dotposhValue"
-}
-
-# Add dotposh\Modules to PSModulePath so custom modules are discoverable
-# Use the actual DOTPOSH path (either from environment or calculated)
-$actualDotposhPath = if ($dotposhValue) { $dotposhValue } else { $dotposhPath }
-$dotposhModulesPath = Join-Path -Path "$actualDotposhPath" -ChildPath "Modules"
-if (Test-Path $dotposhModulesPath) {
-	try {
-		$currentPSModulePath = [System.Environment]::GetEnvironmentVariable("PSModulePath", "User")
-		if ($currentPSModulePath -notlike "*$([regex]::Escape($dotposhModulesPath))*") {
-			if ($currentPSModulePath) {
-				$newPSModulePath = "$currentPSModulePath;$dotposhModulesPath"
+	# Set DOTFILES and DOTPOSH environment variables for windots
+	$dotfilesValue = [System.Environment]::GetEnvironmentVariable("DOTFILES")
+	if ($Force -or !$dotfilesValue) {
+		try {
+			[System.Environment]::SetEnvironmentVariable("DOTFILES", "$PSScriptRoot", "User")
+			# Also update in current session immediately
+			$Env:DOTFILES = $PSScriptRoot
+			if ($dotfilesValue) {
+				$script:setupSummary.Updated += "DOTFILES environment variable"
+				Write-ColorText "{Blue}[environment] {Yellow}(updated) {Magenta}DOTFILES {Yellow}--> {Gray}$PSScriptRoot"
 			} else {
-				$newPSModulePath = $dotposhModulesPath
+				$script:setupSummary.Created += "DOTFILES environment variable"
+				Write-ColorText "{Blue}[environment] {Green}(added) {Magenta}DOTFILES {Yellow}--> {Gray}$PSScriptRoot"
 			}
-			[System.Environment]::SetEnvironmentVariable("PSModulePath", "$newPSModulePath", "User")
-			$script:setupSummary.Created += "PSModulePath (added dotposh\Modules)"
-			Write-ColorText "{Blue}[environment] {Green}(added) {Magenta}PSModulePath {Yellow}--> {Gray}$dotposhModulesPath"
-		} else {
-			$script:setupSummary.Exists += "PSModulePath (dotposh\Modules already included)"
-			Write-ColorText "{Blue}[environment] {Yellow}(exists) {Magenta}PSModulePath {Yellow}--> {Gray}dotposh\Modules already included"
+		} catch {
+			$script:setupSummary.Failed += "DOTFILES environment variable"
+			Write-Error -ErrorAction Stop "An error occurred setting DOTFILES: $_"
 		}
-	} catch {
-		$script:setupSummary.Failed += "PSModulePath configuration"
-		Write-ColorText "{Blue}[environment] {Red}(failed) {Magenta}PSModulePath {Gray}Error: $_"
+	} else {
+		$script:setupSummary.Exists += "DOTFILES environment variable"
+		Write-ColorText "{Blue}[environment] {Yellow}(exists) {Magenta}DOTFILES {Yellow}--> {Gray}$dotfilesValue"
 	}
-} else {
-	Write-ColorText "{Yellow}[environment] {Gray}Warning: dotposh\Modules directory not found at $dotposhModulesPath"
-}
 
-# Add Setup.ps1 directory to PATH so it can be run from anywhere
-$currentPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
-if ($Force -or ($currentPath -notlike "*$([regex]::Escape($PSScriptRoot))*")) {
-	try {
-		if ($currentPath) {
-			$newPath = "$currentPath;$PSScriptRoot"
-		} else {
-			$newPath = $PSScriptRoot
+	$dotposhValue = [System.Environment]::GetEnvironmentVariable("DOTPOSH")
+	$dotposhPath = Join-Path -Path "$PSScriptRoot" -ChildPath "dotposh"
+	if ($Force -or !$dotposhValue) {
+		try {
+			[System.Environment]::SetEnvironmentVariable("DOTPOSH", "$dotposhPath", "User")
+			if ($dotposhValue) {
+				$script:setupSummary.Updated += "DOTPOSH environment variable"
+				Write-ColorText "{Blue}[environment] {Yellow}(updated) {Magenta}DOTPOSH {Yellow}--> {Gray}$dotposhPath"
+			} else {
+				$script:setupSummary.Created += "DOTPOSH environment variable"
+				Write-ColorText "{Blue}[environment] {Green}(added) {Magenta}DOTPOSH {Yellow}--> {Gray}$dotposhPath"
+			}
+		} catch {
+			$script:setupSummary.Failed += "DOTPOSH environment variable"
+			Write-Error -ErrorAction Stop "An error occurred setting DOTPOSH: $_"
 		}
-		[System.Environment]::SetEnvironmentVariable("Path", "$newPath", "User")
-		# Also add to current session
-		$env:Path = "$env:Path;$PSScriptRoot"
-		# Also update DOTFILES in current session so function wrapper works immediately
-		$Env:DOTFILES = $PSScriptRoot
-		if ($currentPath -like "*$([regex]::Escape($PSScriptRoot))*") {
-			$script:setupSummary.Updated += "PATH (added Setup.ps1 directory)"
-			Write-ColorText "{Blue}[environment] {Yellow}(updated) {Magenta}PATH {Yellow}--> {Gray}Added $PSScriptRoot"
-		} else {
-			$script:setupSummary.Created += "PATH (added Setup.ps1 directory)"
-			Write-ColorText "{Blue}[environment] {Green}(added) {Magenta}PATH {Yellow}--> {Gray}Added $PSScriptRoot"
-		}
-	} catch {
-		$script:setupSummary.Failed += "PATH configuration"
-		Write-ColorText "{Blue}[environment] {Red}(failed) {Magenta}PATH {Gray}Error: $_"
+	} else {
+		$script:setupSummary.Exists += "DOTPOSH environment variable"
+		Write-ColorText "{Blue}[environment] {Yellow}(exists) {Magenta}DOTPOSH {Yellow}--> {Gray}$dotposhValue"
 	}
-} else {
-	$script:setupSummary.Exists += "PATH (Setup.ps1 directory already included)"
-	Write-ColorText "{Blue}[environment] {Yellow}(exists) {Magenta}PATH {Yellow}--> {Gray}Setup.ps1 directory already included"
-}
 
-# Set environment variables from JSON config
-$envVars = $json.environmentVariable
-foreach ($env in $envVars) {
-	$envCommand = $env.commandName
-	$envKey = $env.environmentKey
-	$envValue = $env.environmentValue
-	
-	# Expand environment variables in the value (e.g., %USERPROFILE% -> C:\Users\username)
-	# This allows users to use placeholders like %USERPROFILE% or %ProgramFiles% in appList.json
-	$expandedValue = [System.Environment]::ExpandEnvironmentVariables($envValue)
-	
-	if (Get-Command $envCommand -ErrorAction SilentlyContinue) {
-		$existingValue = [System.Environment]::GetEnvironmentVariable("$envKey")
-		if ($Force -or !$existingValue) {
-			Write-Verbose "Set environment variable of $envCommand`: $envKey -> $expandedValue (expanded from: $envValue)"
-			try {
-				# Set the expanded value, not the placeholder
-				[System.Environment]::SetEnvironmentVariable("$envKey", "$expandedValue", "User")
-				if ($existingValue) {
-					Write-ColorText "{Blue}[environment] {Yellow}(updated) {Magenta}$envKey {Yellow}--> {Gray}$expandedValue"
+	# Add dotposh\Modules to PSModulePath so custom modules are discoverable
+	# Use the actual DOTPOSH path (either from environment or calculated)
+	$actualDotposhPath = if ($dotposhValue) { $dotposhValue } else { $dotposhPath }
+	$dotposhModulesPath = Join-Path -Path "$actualDotposhPath" -ChildPath "Modules"
+	if (Test-Path $dotposhModulesPath) {
+		try {
+			$currentPSModulePath = [System.Environment]::GetEnvironmentVariable("PSModulePath", "User")
+			if ($currentPSModulePath -notlike "*$([regex]::Escape($dotposhModulesPath))*") {
+				if ($currentPSModulePath) {
+					$newPSModulePath = "$currentPSModulePath;$dotposhModulesPath"
 				} else {
-					Write-ColorText "{Blue}[environment] {Green}(added) {Magenta}$envKey {Yellow}--> {Gray}$expandedValue"
+					$newPSModulePath = $dotposhModulesPath
 				}
-			} catch {
-				Write-Error -ErrorAction Stop "An error occurred: $_"
+				[System.Environment]::SetEnvironmentVariable("PSModulePath", "$newPSModulePath", "User")
+				$script:setupSummary.Created += "PSModulePath (added dotposh\Modules)"
+				Write-ColorText "{Blue}[environment] {Green}(added) {Magenta}PSModulePath {Yellow}--> {Gray}$dotposhModulesPath"
+			} else {
+				$script:setupSummary.Exists += "PSModulePath (dotposh\Modules already included)"
+				Write-ColorText "{Blue}[environment] {Yellow}(exists) {Magenta}PSModulePath {Yellow}--> {Gray}dotposh\Modules already included"
 			}
-		} else {
-			Write-ColorText "{Blue}[environment] {Yellow}(exists) {Magenta}$envKey {Yellow}--> {Gray}$existingValue"
+		} catch {
+			$script:setupSummary.Failed += "PSModulePath configuration"
+			Write-ColorText "{Blue}[environment] {Red}(failed) {Magenta}PSModulePath {Gray}Error: $_"
+		}
+	} else {
+		Write-ColorText "{Yellow}[environment] {Gray}Warning: dotposh\Modules directory not found at $dotposhModulesPath"
+	}
+
+	# Add Setup.ps1 directory to PATH so it can be run from anywhere
+	$currentPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
+	if ($Force -or ($currentPath -notlike "*$([regex]::Escape($PSScriptRoot))*")) {
+		try {
+			if ($currentPath) {
+				$newPath = "$currentPath;$PSScriptRoot"
+			} else {
+				$newPath = $PSScriptRoot
+			}
+			[System.Environment]::SetEnvironmentVariable("Path", "$newPath", "User")
+			# Also add to current session
+			$env:Path = "$env:Path;$PSScriptRoot"
+			# Also update DOTFILES in current session so function wrapper works immediately
+			$Env:DOTFILES = $PSScriptRoot
+			if ($currentPath -like "*$([regex]::Escape($PSScriptRoot))*") {
+				$script:setupSummary.Updated += "PATH (added Setup.ps1 directory)"
+				Write-ColorText "{Blue}[environment] {Yellow}(updated) {Magenta}PATH {Yellow}--> {Gray}Added $PSScriptRoot"
+			} else {
+				$script:setupSummary.Created += "PATH (added Setup.ps1 directory)"
+				Write-ColorText "{Blue}[environment] {Green}(added) {Magenta}PATH {Yellow}--> {Gray}Added $PSScriptRoot"
+			}
+		} catch {
+			$script:setupSummary.Failed += "PATH configuration"
+			Write-ColorText "{Blue}[environment] {Red}(failed) {Magenta}PATH {Gray}Error: $_"
+		}
+	} else {
+		$script:setupSummary.Exists += "PATH (Setup.ps1 directory already included)"
+		Write-ColorText "{Blue}[environment] {Yellow}(exists) {Magenta}PATH {Yellow}--> {Gray}Setup.ps1 directory already included"
+	}
+
+	# Set environment variables from JSON config
+	$envVars = $json.environmentVariable
+	foreach ($env in $envVars) {
+		$envCommand = $env.commandName
+		$envKey = $env.environmentKey
+		$envValue = $env.environmentValue
+
+		# Expand environment variables in the value (e.g., %USERPROFILE% -> C:\Users\username)
+		# This allows users to use placeholders like %USERPROFILE% or %ProgramFiles% in appList.json
+		$expandedValue = [System.Environment]::ExpandEnvironmentVariables($envValue)
+
+		if (Get-Command $envCommand -ErrorAction SilentlyContinue) {
+			$existingValue = [System.Environment]::GetEnvironmentVariable("$envKey")
+			if ($Force -or !$existingValue) {
+				Write-Verbose "Set environment variable of $envCommand`: $envKey -> $expandedValue (expanded from: $envValue)"
+				try {
+					# Set the expanded value, not the placeholder
+					[System.Environment]::SetEnvironmentVariable("$envKey", "$expandedValue", "User")
+					if ($existingValue) {
+						Write-ColorText "{Blue}[environment] {Yellow}(updated) {Magenta}$envKey {Yellow}--> {Gray}$expandedValue"
+					} else {
+						Write-ColorText "{Blue}[environment] {Green}(added) {Magenta}$envKey {Yellow}--> {Gray}$expandedValue"
+					}
+				} catch {
+					Write-Error -ErrorAction Stop "An error occurred: $_"
+				}
+			} else {
+				Write-ColorText "{Blue}[environment] {Yellow}(exists) {Magenta}$envKey {Yellow}--> {Gray}$existingValue"
+			}
 		}
 	}
-}
-if (Get-Command gh -ErrorAction SilentlyContinue) {
-	$ghDashAvailable = (& gh.exe extension list | Select-String -Pattern "dlvhdr/gh-dash" -SimpleMatch -CaseSensitive)
-	if ($ghDashAvailable) {
-		$existingValue = [System.Environment]::GetEnvironmentVariable("GH_DASH_CONFIG")
-		if ($Force -or !$existingValue) {
-			try {
-				[System.Environment]::SetEnvironmentVariable("GH_DASH_CONFIG", "$env:USERPROFILE\.config\gh-dash\config.yml", "User")
-				if ($existingValue) {
-					Write-ColorText "{Blue}[environment] {Yellow}(updated) {Magenta}GH_DASH_CONFIG {Yellow}--> {Gray}$env:USERPROFILE\.config\gh-dash\config.yml"
-				} else {
-					Write-ColorText "{Blue}[environment] {Green}(added) {Magenta}GH_DASH_CONFIG {Yellow}--> {Gray}$env:USERPROFILE\.config\gh-dash\config.yml"
+	if (Get-Command gh -ErrorAction SilentlyContinue) {
+		$ghDashAvailable = (& gh.exe extension list | Select-String -Pattern "dlvhdr/gh-dash" -SimpleMatch -CaseSensitive)
+		if ($ghDashAvailable) {
+			$existingValue = [System.Environment]::GetEnvironmentVariable("GH_DASH_CONFIG")
+			if ($Force -or !$existingValue) {
+				try {
+					[System.Environment]::SetEnvironmentVariable("GH_DASH_CONFIG", "$env:USERPROFILE\.config\gh-dash\config.yml", "User")
+					if ($existingValue) {
+						Write-ColorText "{Blue}[environment] {Yellow}(updated) {Magenta}GH_DASH_CONFIG {Yellow}--> {Gray}$env:USERPROFILE\.config\gh-dash\config.yml"
+					} else {
+						Write-ColorText "{Blue}[environment] {Green}(added) {Magenta}GH_DASH_CONFIG {Yellow}--> {Gray}$env:USERPROFILE\.config\gh-dash\config.yml"
+					}
+				} catch {
+					Write-Error -ErrorAction Stop "An error occurred: $_"
 				}
-			} catch {
-				Write-Error -ErrorAction Stop "An error occurred: $_"
+			} else {
+				Write-ColorText "{Blue}[environment] {Yellow}(exists) {Magenta}GH_DASH_CONFIG {Yellow}--> {Gray}$existingValue"
 			}
-		} else {
-			Write-ColorText "{Blue}[environment] {Yellow}(exists) {Magenta}GH_DASH_CONFIG {Yellow}--> {Gray}$existingValue"
 		}
 	}
-}
 	Refresh ($i++)
 }
 
@@ -2098,7 +2127,7 @@ if (Should-RunSection "Komorebi") {
 ##############################################################################
 if (Should-RunSection "WSL") {
 	Write-TitleBox -Title "Windows Subsystem for Linux (WSL) Setup"
-	
+
 	$wslInstalled = Get-Command wsl -CommandType Application -ErrorAction Ignore
 	if ($Force -or !$wslInstalled) {
 		if ($Force -and $wslInstalled) {
@@ -2109,35 +2138,35 @@ if (Should-RunSection "WSL") {
 	} else {
 		Write-ColorText "{Blue}[wsl] {Yellow}(already installed)"
 	}
-	
+
 	# Handle .wslconfig file configuration and copying
 	$wslConfigPath = "$env:USERPROFILE\.wslconfig"
 	$wslConfigSource = "$PSScriptRoot\config\home\.wslconfig"
-	
+
 	if (Test-Path $wslConfigSource) {
 		Write-ColorText ""
 		Write-ColorText "{Blue}[wsl] {Magenta}.wslconfig: {Gray}Configuration file found"
 		Write-ColorText "{Yellow}[!] {Gray}The .wslconfig file needs to be configured with your system's resources."
 		Write-ColorText "{DarkGray}   Please review and adjust settings like memory, processors, and swap size."
 		Write-ColorText ""
-		
+
 		$configured = $(Write-Host "Have you configured the .wslconfig file? [y/N]: " -NoNewline -ForegroundColor Magenta; Read-Host)
-		
+
 		if ($configured.ToUpper() -ne 'Y') {
 			Write-ColorText ""
 			Write-ColorText "{Yellow}[!] {Gray}The .wslconfig file should be configured before using WSL."
 			Write-ColorText ""
-			
+
 			$openNow = $(Write-Host "Would you like to configure it now? [y/N]: " -NoNewline -ForegroundColor Magenta; Read-Host)
-			
+
 			if ($openNow.ToUpper() -eq 'Y') {
 				Write-ColorText ""
 				Write-ColorText "{Blue}[wsl] {Gray}Opening .wslconfig file for editing..."
-				
+
 				# Find available terminal editor (prefer nvim, then micro, then fallback)
 				$editor = $null
 				$editorName = $null
-				
+
 				if (Get-Command nvim -ErrorAction SilentlyContinue) {
 					$editor = "nvim"
 					$editorName = "nvim"
@@ -2149,22 +2178,22 @@ if (Should-RunSection "WSL") {
 					$editor = $null
 					$editorName = "default editor"
 				}
-				
+
 				if ($editor) {
 					# Use terminal editor (nvim or micro)
 					Write-ColorText "{Blue}[wsl] {Gray}Opening in {Cyan}${editorName} {Gray}(terminal editor)..."
 					Write-ColorText "{DarkGray}   After editing, save and exit the editor to continue."
 					Write-ColorText ""
-					
+
 					try {
 						# Run editor directly in current terminal (blocking)
 						& $editor $wslConfigSource
-						
+
 						# After editor exits, copy the configured file
 						if (Test-Path $wslConfigSource) {
 							Write-ColorText ""
 							Write-ColorText "{Blue}[wsl] {Green}(saved) {Gray}Configuration saved. Copying file to user profile..."
-							
+
 							# Now copy the configured source file to destination
 							if (Test-Path $wslConfigPath) {
 								# Backup existing file if it exists
@@ -2174,7 +2203,7 @@ if (Should-RunSection "WSL") {
 							} else {
 								$script:setupSummary.Created += ".wslconfig"
 							}
-							
+
 							Copy-Item $wslConfigSource $wslConfigPath -Force -ErrorAction SilentlyContinue
 							Write-ColorText "{Blue}[wsl] {Green}(copied) {Gray}.wslconfig copied to {Cyan}$wslConfigPath"
 						} else {
@@ -2210,7 +2239,7 @@ if (Should-RunSection "WSL") {
 				if (Test-Path $wslConfigPath) {
 					$sourceHash = (Get-FileHash $wslConfigSource -ErrorAction SilentlyContinue).Hash
 					$destHash = (Get-FileHash $wslConfigPath -ErrorAction SilentlyContinue).Hash
-					
+
 					if ($sourceHash -ne $destHash) {
 						if ($Force) {
 							$backupPath = "$wslConfigPath.backup.$(Get-Date -Format 'yyyyMMdd-HHmmss')"
@@ -2237,7 +2266,7 @@ if (Should-RunSection "WSL") {
 			if (Test-Path $wslConfigPath) {
 				$sourceHash = (Get-FileHash $wslConfigSource -ErrorAction SilentlyContinue).Hash
 				$destHash = (Get-FileHash $wslConfigPath -ErrorAction SilentlyContinue).Hash
-				
+
 				if ($sourceHash -ne $destHash) {
 					if ($Force) {
 						$backupPath = "$wslConfigPath.backup.$(Get-Date -Format 'yyyyMMdd-HHmmss')"

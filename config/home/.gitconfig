@@ -68,6 +68,8 @@
 	# name = Your Name Here
 	# email = your.email@example.com
     signingkey = ~/.ssh/id_ed25519.pub
+	name = XcluEzy7
+	email = garciaantoine.erik@gmail.com
 [gpg]
 	format = ssh
 [gpg "ssh"]

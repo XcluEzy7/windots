@@ -21,6 +21,7 @@ out/*
 # Proposal documents (private/internal use only)
 *_Proposal.md
 *Proposal*.md
+.cursor/*
 
 GEMINI.md
 

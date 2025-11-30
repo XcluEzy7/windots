@@ -115,6 +115,7 @@ cd `your_location`
 <h4>⚙️ PowerShell 5.1 Module Installation Support <small><i>(v0.07)</i></small></h4>
 <h4>🔑 YASB GitHub Token Configuration <small><i>(v0.08)</i></small></h4>
 <h4>🐧 WSL Configuration Setup with Terminal Editor Support <small><i>(v0.09)</i></small></h4>
+<h4>🔄 Application Update Management <small><i>(v0.10)</i></small></h4>
 
 > [!IMPORTANT]
 > **PowerShell Module Installation**: PowerShell modules from the PowerShell Gallery must be installed in **PowerShell 5.1** (Windows PowerShell), not PowerShell 7.x. The `Setup.ps1` script automatically handles this by delegating module installation to PowerShell 5.1 (`powershell.exe`) even when the script itself runs in PowerShell 7.x. This ensures modules are installed in the correct location and are available to both PowerShell versions.
@@ -157,6 +158,7 @@ The setup script supports skip parameters to run only specific sections of the i
 - `-Komorebi` - Setup Komorebi & YASB engines
 - `-NerdFonts` - Install Nerd Fonts
 - `-WSL` - Install Windows Subsystem for Linux
+- `-Updates` - Update all installed applications from appList.json
 
 **Force Mode:**
 Use the `-Force` parameter with any skip parameter to overwrite existing configurations or force reinstall packages.
@@ -182,6 +184,9 @@ w11dot-setup -Symlinks -Force
 
 # Only install VSCode extensions, reinstall even if exists
 w11dot-setup -VSCode -Force
+
+# Update all installed applications from appList.json
+w11dot-setup -Updates
 ```
 
 > [!NOTE]
@@ -192,6 +197,69 @@ w11dot-setup -VSCode -Force
 
 > [!TIP]
 > **Privilege Escalation**: The `w11dot-setup` function automatically uses `gsudo` to elevate privileges when needed. If `gsudo` is not installed, you'll see a warning and can install it with `winget install gerardog.gsudo`. The function will attempt to run without elevation as a fallback, but most setup operations require admin privileges.
+
+<details>
+<summary><b>🔄 Application Update Management <small><i>(v0.10)</i></small></b></summary>
+
+<br>
+
+The `-Updates` parameter allows you to update all installed applications listed in `appList.json` using their respective package managers. This feature intelligently manages updates across **Winget**, **Chocolatey**, and **Scoop** packages.
+
+**Usage:**
+```pwsh
+# Update all installed applications
+w11dot-setup -Updates
+
+# Update only specific package managers (for testing)
+.\updateApps.ps1 -Winget
+.\updateApps.ps1 -Choco
+.\updateApps.ps1 -Scoop
+.\updateApps.ps1 -Choco -Scoop  # Multiple managers
+```
+
+**How It Works:**
+
+1. **Smart Detection**: The script checks which package manager installed each application and uses the correct update command for that manager.
+
+2. **Pre-Update Checks**: Before attempting to update, the script verifies if an update is actually available:
+   - **Winget**: Compares installed version with available version using `winget list`
+   - **Chocolatey**: Uses `choco outdated` to check for available updates
+   - **Scoop**: Parses `scoop update` output to detect "latest version" status
+
+3. **Privilege Management**: 
+   - **Winget & Chocolatey**: Can run with admin privileges (automatically elevated if needed)
+   - **Scoop**: **MUST** run as non-privileged user to prevent package corruption. The script automatically spawns a non-admin process when running as admin.
+
+4. **PowerShell Module Packages**: Packages ending in `*psmodule` (e.g., `burnttoast-psmodule`) are automatically handled in PowerShell 5.1 context with `PowerShellGet` module imported, as required by Chocolatey's module installation process.
+
+5. **Output & Logging**:
+   - **Success Logs**: Saved to `%USERPROFILE%\w11dot_logs\apps\appUpdate_{timestamp}_success.log`
+     - Concise entries showing package manager, package name, and version changes
+     - Format: `✅ manager | package | version (or old -> new)`
+   - **Error Logs**: Saved to `%USERPROFILE%\w11dot_logs\apps\appUpdate_{timestamp}_error.log`
+     - Verbose error details for troubleshooting failed updates
+   - **Console Output**: Clean, color-coded status messages:
+     - `(up to date)` - Package is already at the latest version
+     - `(success)` - Package was successfully updated
+     - `(failed)` - Update encountered an error
+     - `(skipped)` - Package is not installed
+
+6. **Update Status Detection**:
+   - Packages are marked as "up to date" if:
+     - No newer version is available
+     - Installed version matches available version
+     - Package manager reports "already up to date" or "latest version"
+   - Only packages that actually need updating will show "Updating..." message
+
+**Best Practices:**
+- Run `w11dot-setup -Updates` regularly to keep your applications current
+- Check the success log to see which packages were updated and their version changes
+- Review error logs if any packages fail to update
+- Use individual package manager switches (`-Winget`, `-Choco`, `-Scoop`) for testing or selective updates
+
+**Note**: The update process respects the `autoInstall` setting in `appList.json`. Only packages from package managers with `autoInstall: true` will be processed.
+
+</details>
 
 <h4>⁉️ Overriding Defaults</h4>
 
