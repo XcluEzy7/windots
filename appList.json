@@ -23,6 +23,7 @@
 				// Must-haves
 				{ "packageId": "Microsoft.PowerShell" },
 				{ "packageId": "Microsoft.WindowsTerminal.Preview" },
+				{ "packageId": " Zen-Team.Zen-Browser" },
 
 				// Shell supports
 				{ "packageId": "chrisant996.Clink" },
@@ -58,7 +59,7 @@
 				//{ "packageId": "Canonical.MicroK8s" },
 
 				// Paid services
-				{ "packageId": "Proton.ProtonVPN" },
+				//{ "packageId": "Proton.ProtonVPN" },
 				{ "packageId": "Stardock.Start11" },
 
 				// Windows Tweak Managers
@@ -204,7 +205,7 @@
 				"vagrant-timezone",
 				"vagrant-reload"
 			],
-			"install": false
+			"install": true
 		},
 		{
 			"commandName": "pip",
