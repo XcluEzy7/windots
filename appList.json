@@ -97,6 +97,7 @@
 				{ "packageName": "cacert" },
 				{ "packageName": "innounp" },
 				{ "packageName": "wixtoolset" },
+				{ "packageName": "winscp" },
 
 				// Scoop Extras
 				{ "packageName": "scoop-completion" },
