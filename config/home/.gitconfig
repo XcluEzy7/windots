@@ -74,3 +74,5 @@
 	format = ssh
 [gpg "ssh"]
 	program = ssh-keygen
+[safe]
+	directory = C:\\Users\\egsox\\.xpipe\\storage
