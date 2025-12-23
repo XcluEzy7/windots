@@ -7,6 +7,7 @@
 		// No need to modify paths - they will adapt to each user automatically
 		{ "commandName": "eza", "environmentKey": "EZA_CONFIG_DIR", "environmentValue": "%USERPROFILE%\\.config\\eza" },
 		{ "commandName": "komorebic", "environmentKey": "KOMOREBI_CONFIG_HOME", "environmentValue": "%USERPROFILE%\\.config\\komorebi" },
+		{ "commandName": "glazewm", "environmentKey": "GLAZEWM_CONFIG_PATH", "environmentValue": "%USERPROFILE%\\.config\\.glzr\\glazewm\\config.yaml" },
 		{ "commandName": "yazi", "environmentKey": "YAZI_FILE_ONE", "environmentValue": "%ProgramFiles%\\Git\\usr\\bin\\file.exe" },
 		{ "commandName": "yazi", "environmentKey": "YAZI_CONFIG_HOME", "environmentValue": "%USERPROFILE%\\.config\\yazi" },
 		{ "commandName": "vagrant", "environmentKey": "VAGRANT_DEFAULT_PROVIDER", "environmentValue": "virtualbox" }

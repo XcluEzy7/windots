@@ -40,7 +40,7 @@ bars:
       bottom: 5
       right: 15
     widgets:
-      left: ["komorebi_workspaces", "komorebi_active_layout","glazewm_workspaces", "glazewm_tiling_direction", "apps", "active_window"]
+      left: ["komorebi_workspaces", "komorebi_active_layout","glazewm_workspaces", "glazewm_tiling_direction", "glazewm_binding_mode", "apps", "active_window"]
       center: ["clock"]
       right: ["wifi", "bluetooth", "github", "taskbar", "cpu", "memory", "weather", "volume", "power_menu"]
   
@@ -71,7 +71,7 @@ bars:
     widgets:
       left: ["komorebi_workspaces", "komorebi_active_layout","glazewm_workspaces",]
       center: ["active_window"]
-      right: ["update"]
+      right: ["update", "systray"]
 
 widgets:
   win_button:

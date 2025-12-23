@@ -1,6 +1,6 @@
 general:
 
-  #startup_commands: ['shell-exec zebar' , 'shell-exec glazewm-extra']
+  startup_commands: ['shell-exec yasb.exe']
   # startup_commands: ['shell-exec zebar' , 'shell-exec glazewm-extra']
   shutdown_commands: ['shell-exec taskkill /IM yasb.exe /F']
 
