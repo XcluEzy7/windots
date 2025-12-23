@@ -9,6 +9,11 @@ komorebi:
   stop_command: "komorebic stop --whkd"
   reload_command: "komorebic stop --whkd && komorebic start --whkd"
 
+glazewm:
+  start_command: "glazewm.exe start"
+  stop_command: "glazewm.exe command wm-exit"
+  reload_command: "glazewm.exe command wm-exit && glazewm.exe start"
+    
 bars:
   status-bar:
     enabled: true
@@ -35,9 +40,9 @@ bars:
       bottom: 5
       right: 15
     widgets:
-      left: ["komorebi_workspaces", "komorebi_active_layout", "apps", "active_window"]
+      left: ["komorebi_workspaces", "komorebi_active_layout","glazewm_workspaces", "glazewm_tiling_direction", "apps", "active_window"]
       center: ["clock"]
-      right: ["wifi", "github", "cpu", "memory", "weather", "volume", "power_menu"]
+      right: ["wifi", "bluetooth", "github", "taskbar", "cpu", "memory", "weather", "volume", "power_menu"]
   
   status-bar-secondary:
     enabled: true
@@ -64,7 +69,7 @@ bars:
       bottom: 5
       right: 15
     widgets:
-      left: ["komorebi_workspaces", "komorebi_active_layout"]
+      left: ["komorebi_workspaces", "komorebi_active_layout","glazewm_workspaces",]
       center: ["active_window"]
       right: ["update"]
 
@@ -113,6 +118,50 @@ widgets:
           on_middle: 'toggle_monocle'
           on_right: 'prev_layout'
 
+  taskbar:
+    type: "yasb.taskbar.TaskbarWidget"
+    options:
+      icon_size: 17
+      animation:
+        enabled: false
+
+
+  glazewm_workspaces:
+    type: "glazewm.workspaces.GlazewmWorkspacesWidget"
+    options:
+      hide_empty_workspaces: true
+      hide_if_offline: true
+      
+  glazewm_tiling_direction:
+    type: "glazewm.tiling_direction.GlazewmTilingDirectionWidget"
+    options:
+      horizontal_label: "\udb81\udce1"
+      vertical_label: "\udb81\udce2"
+      btn_shadow:
+        enabled: true
+        color: "black"
+        radius: 3
+        offset: [ 1, 1 ]
+  glazewm_binding_mode:
+    type: "glazewm.binding_mode.GlazewmBindingModeWidget"
+    options:
+      hide_if_no_active: true
+      label_if_no_active: "NBM"
+      default_icon: "\uf071"
+      icons: 
+        none: ""
+        resize: "\uf071"
+        pause: "\uf28c"
+      binding_modes_to_cycle_through: [
+        "none", # none handles if no binding mode is active
+        "resize",
+        "pause"
+      ]
+      callbacks:
+        on_left: "next_binding_mode"
+        on_middle: "toggle_label"
+        on_right: "disable_binding_mode"
+        
   active_window:
     type: "yasb.active_window.ActiveWindowWidget"
     options:
@@ -216,6 +265,7 @@ widgets:
     run_after: # List of functions to run after wallpaper is updated
       - "wal -s -t -e -q -n -i {image}" # Example command to run after wallpaper is updated
       - "cmd.exe /c start /min pwsh ./yasb.ps1" # Example command to run after wallpaper is updated
+
   home:
     type: "yasb.home.HomeWidget"
     options:
@@ -359,3 +409,32 @@ widgets:
           on_left: "toggle_label"
           on_middle: "do_nothing"
           on_right: "do_nothing"
+
+  systray:
+    type: "yasb.systray.SystrayWidget"
+    options:
+      class_name: "systray"
+      label_collapsed: ""
+      label_expanded: ""
+      label_position: "left"
+      icon_size: 18
+      pin_click_modifier: "alt" 
+      show_unpinned: false
+      show_battery: false
+      show_volume: false
+      show_network: false
+
+  bluetooth:
+    type: "yasb.bluetooth.BluetoothWidget"
+    options:
+      label: "{icon}"
+      label_alt: "{device_name}"
+      label_no_device: "No devices connected"
+      label_device_separator: ", "
+      icons: 
+        bluetooth_on: "󰂯"
+        bluetooth_off: "󰂲"
+        bluetooth_connected: "󰂱"
+      callbacks:
+        on_left: "toggle_label"
+        on_right: "exec cmd.exe /c start ms-settings:bluetooth"

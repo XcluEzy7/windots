@@ -280,7 +280,15 @@
 				"id": "Bitwarden.exe",
 				"matching_strategy": "Equals"
 			}
+		],
+		"floating": [
+			{
+				"kind": "Class",
+				"id": "Chrome_WidgetWin_1",
+				"matching_strategy": "Equals"
+			}
 		]
+		
 	},
 	"Blender": {
 		"floating": [
@@ -1873,6 +1881,22 @@
 			{
 				"kind": "Exe",
 				"id": "RoundedTB.exe",
+				"matching_strategy": "Equals"
+			}
+		]
+	},
+	"RustDesk": {
+		"tray_and_multi_window": [
+			{
+				"kind": "Exe",
+				"id": "RustDesk.exe",
+				"matching_strategy": "Equals"
+			}
+		],
+		"floating": [
+			{
+				"kind": "Class",
+				"id": "FLUTTER_RUNNER_WIN32_WINDOW",
 				"matching_strategy": "Equals"
 			}
 		]

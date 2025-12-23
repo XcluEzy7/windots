@@ -109,6 +109,7 @@
 				{ "packageName": "bitwarden" },
 				{ "packageName": "sharex" },
 				{ "packageName": "cursor" },
+				{ "packageName": "glazewm" },
 
 				// Git helpers
 				{ "packageName": "bfg" },

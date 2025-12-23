@@ -104,13 +104,79 @@
     background-color: var(--green);
     border-radius: 5px;
 }
+/* GlazeWM */
 
-.wifi-widget {
-	padding: 0 4px 0 4px;
-	border-top-left-radius: 18px;
-	border-bottom-left-radius: 18px;
+.glazewm-workspaces {
+	border-radius: 8px;
+	padding: 0 6px;
+	background-color: var(--base);
 }
 
+
+.glazewm-workspaces .ws-btn {
+	color: #D4BE98;
+    border: none;
+    padding: 0px 7px;
+	outline: none;
+}
+.glazewm-workspaces .ws-btn.active_empty,
+.glazewm-workspaces .ws-btn.active_populated {
+	color: #89b482;	
+	outline: none;
+}
+.glazewm-tiling-direction {
+    background-color: transparent;
+	margin: 4px 0px 4px 0;
+}
+
+.glazewm-tiling-direction .btn {
+    font-size: 18px;
+    width: 22px;
+    height: 22px;
+    margin: 0 ;
+    color: #CDD6F4;
+    border: none;
+	border-radius: 15px;
+	background-color: var(--base);
+}
+
+.glazewm-tiling-direction .btn:hover {
+    background-color: #727272;
+}
+
+/* Taskbar */
+
+.taskbar-widget {
+	background-color: var(--base);
+	margin-left: 0px;
+    border-radius: 0px;	
+}
+
+.taskbar-widget .app-container {
+    padding: 0 8px;
+}
+/*Bluetooth*/
+
+.bluetooth-widget .widget-container {
+	background-color: var(--base);
+	margin: 0px;
+
+}
+.bluetooth-widget .label {
+	padding: 8px;
+	font-size: 18px;
+}
+.bluetooth-widget .label.alt {}
+.bluetooth-widget .icon {}
+
+/*
+.wifi-widget {
+	padding: 0 4px 0 4px;
+	margin-left: 4px;
+	border-top-left-radius: 16px;
+	border-bottom-left-radius: 16px;
+}
+*/
 .apps-widget .widget-container {
     margin-right: 2px;
 }
@@ -209,7 +275,7 @@
 }
 .cpu-widget .icon {
     color: var(--green);
-    font-size: 16px;
+    font-size: 18px;
 }
 .volume-widget .icon {
     font-size: 20px;
@@ -275,13 +341,14 @@
 
 /* WIFI WIDGET */
 .wifi-widget {
-	padding: 0 4px 0 2px;
+	padding: 0 4px 0 10px;
 	border-top-left-radius: 15px;
 	border-bottom-left-radius: 15px;
+	
 }
 .wifi-widget .icon {
 	color: #43d8d8;
-	padding: 0 2px 0 8px;
+	padding: 0 4px 0 8px;
     margin: 0;
 }
 
