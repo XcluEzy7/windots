@@ -45,7 +45,8 @@
 				// Editors
 				{ "packageId": "JetBrains.IntelliJIDEA.Community" },
 				{ "packageId": "Microsoft.VisualStudioCode" },
-				{ "packageId": "Notepad++.Notepad++" },
+				//{ "packageId": "Notepad++.Notepad++" }, Issues with glazewm
+(Flickers when there are multiple monitors. ***the wallpaper is set to span)
 				{ "packageId": "Obsidian.Obsidian" },
 				{ "packageId": "LoftLabs.DevPod" }, // Client-Only Codespaces
 
@@ -80,8 +81,8 @@
 				{ "packageName": "choco-cleaner" },
 				{ "packageName": "gpg4win" },
 				{ "packageName": "burnttoast-psmodule" },
-				{ "packageName": "rustdesk" }
-
+				{ "packageName": "rustdesk" },
+				{ "packageName": "kate" }
 			],
 			"additionalArgs": ["-y", "-r", "--no-progress"]
 		},
