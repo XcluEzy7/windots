@@ -5,1109 +5,614 @@
     Updates installed applications from appList.json using appropriate package managers.
 
 .DESCRIPTION
-    This script updates all installed packages listed in appList.json using the correct
-    package manager (Winget, Chocolatey, or Scoop) based on priority order.
-    Scoop updates run in a non-admin process to prevent package corruption.
-
-.PARAMETER Winget
-    Only update packages installed via Winget.
-
-.PARAMETER Choco
-    Only update packages installed via Chocolatey.
+    This script updates packages listed in appList.json using Winget, Chocolatey, or Scoop.
+    - Scoop: Always runs in non-admin context (spawns non-admin process if running as admin)
+    - Winget/Choco: Require admin context (auto-elevates if not admin)
 
 .PARAMETER Scoop
-    Only update packages installed via Scoop.
+    Update only Scoop packages. Alias: -scp
+
+.PARAMETER Winget
+    Update only Winget packages. Alias: -win
+
+.PARAMETER Choco
+    Update only Chocolatey packages. Alias: -cho
+
+.PARAMETER All
+    Update all packages from all managers. Alias: -a (default if no switch specified)
 
 .EXAMPLE
     .\updateApps.ps1
-    Updates all packages from all package managers.
+    Updates all packages (default behavior).
 
 .EXAMPLE
-    .\updateApps.ps1 -Winget
-    Updates only Winget packages.
+    .\updateApps.ps1 -Scoop
+    Updates only Scoop packages.
 
 .EXAMPLE
-    .\updateApps.ps1 -Choco -Scoop
-    Updates Chocolatey and Scoop packages only.
+    .\updateApps.ps1 -win -cho
+    Updates Winget and Chocolatey packages only.
 
 .NOTES
     Author: eagarcia@techforexcellence.org
-    Version: 1.0.0
+    Version: 2.0.0
 #>
 
+[CmdletBinding()]
 Param(
-	[switch]$Winget,
-	[switch]$Choco,
-	[switch]$Scoop
+    [Alias('scp')][switch]$Scoop,
+    [Alias('win')][switch]$Winget,
+    [Alias('cho')][switch]$Choco,
+    [Alias('a')][switch]$All
 )
 
 $ErrorActionPreference = "Continue"
-$VerbosePreference = "SilentlyContinue"
 
-# Determine which package managers to process
-# If no switches specified, process all (default behavior)
-$processWinget = if ($Winget -or $Choco -or $Scoop) { $Winget } else { $true }
-$processChoco = if ($Winget -or $Choco -or $Scoop) { $Choco } else { $true }
-$processScoop = if ($Winget -or $Choco -or $Scoop) { $Scoop } else { $true }
-
-# Set script root
-$scriptRoot = $PSScriptRoot
-if (!$scriptRoot) {
-	$scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+#region Configuration
+$script:ScriptRoot = $PSScriptRoot
+if (!$script:ScriptRoot) {
+    $script:ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 }
 
-# Initialize logging
-$logDir = Join-Path $env:USERPROFILE "w11dot_logs\apps"
-$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$successLog = Join-Path $logDir "appUpdate_${timestamp}_success.log"
-$errorLog = Join-Path $logDir "appUpdate_${timestamp}_error.log"
+$script:LogDir = Join-Path $env:USERPROFILE "w11dot_logs\apps"
+$script:Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$script:SuccessLog = Join-Path $script:LogDir "appUpdate_$($script:Timestamp)_success.log"
+$script:ErrorLog = Join-Path $script:LogDir "appUpdate_$($script:Timestamp)_error.log"
 
-# Create log directory if it doesn't exist
-if (!(Test-Path $logDir)) {
-	New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+$script:Summary = @{
+    Updated = @()
+    Skipped = @()
+    Failed  = @()
 }
+#endregion
 
-# Initialize log files
-"========================================`n" | Out-File $successLog -Encoding utf8
-"Update Started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')`n" | Out-File $successLog -Append -Encoding utf8
-"========================================`n`n" | Out-File $successLog -Append -Encoding utf8
+#region Helper Functions
 
-"========================================`n" | Out-File $errorLog -Encoding utf8
-"Update Started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')`n" | Out-File $errorLog -Append -Encoding utf8
-"========================================`n`n" | Out-File $errorLog -Append -Encoding utf8
-
-# Tracking variables
-$script:updateSummary = @{
-	Updated = @()
-	Skipped = @()
-	Failed  = @()
-}
-
-# Helper function to write colored output
-function Write-ColorText {
-	param ([string]$Text, [switch]$NoNewLine)
-	$hostColor = $Host.UI.RawUI.ForegroundColor
-	$Text.Split( [char]"{", [char]"}" ) | ForEach-Object { $i = 0; } {
-		if ($i % 2 -eq 0) { Write-Host $_ -NoNewline }
-		else {
-			if ($_ -in [enum]::GetNames("ConsoleColor")) {
-				$Host.UI.RawUI.ForegroundColor = ($_ -as [System.ConsoleColor])
-			}
-		}
-		$i++
-	}
-	if (!$NoNewLine) { Write-Host }
-	$Host.UI.RawUI.ForegroundColor = $hostColor
-}
-
-# Check if running as admin
 function Test-Administrator {
-	$currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-	$principal = New-Object System.Security.Principal.WindowsPrincipal($currentUser)
-	return $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+    $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object System.Security.Principal.WindowsPrincipal($currentUser)
+    return $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
-# Check if package is installed via Winget
-function Test-WinGetInstalled {
-	param ([string]$PackageID)
-	if (!(Get-Command winget -ErrorAction SilentlyContinue)) { return $false }
-	$result = winget list --exact -q $PackageID 2>&1
-	return ($LASTEXITCODE -eq 0)
+function Initialize-Logging {
+    if (!(Test-Path $script:LogDir)) {
+        New-Item -ItemType Directory -Path $script:LogDir -Force | Out-Null
+    }
+
+    $header = "========================================`nUpdate Started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')`n========================================"
+    $header | Out-File $script:SuccessLog -Encoding utf8
+    $header | Out-File $script:ErrorLog -Encoding utf8
 }
 
-# Check if package is installed via Chocolatey
+function Write-Log {
+    param(
+        [string]$Message,
+        [ValidateSet('Success', 'Error')][string]$Type = 'Success'
+    )
+
+    $logFile = if ($Type -eq 'Success') { $script:SuccessLog } else { $script:ErrorLog }
+    $Message | Out-File $logFile -Append -Encoding utf8
+}
+
+function Write-Status {
+    param(
+        [string]$Manager,
+        [string]$Package,
+        [ValidateSet('Updating', 'Success', 'UpToDate', 'Skipped', 'Failed', 'Error')][string]$Status,
+        [string]$Details = ""
+    )
+
+    $colors = @{
+        Updating = "Gray"
+        Success  = "Green"
+        UpToDate = "Green"
+        Skipped  = "Yellow"
+        Failed   = "Red"
+        Error    = "Red"
+    }
+
+    $symbols = @{
+        Updating = "..."
+        Success  = "(success)"
+        UpToDate = "(up to date)"
+        Skipped  = "(skipped)"
+        Failed   = "(failed)"
+        Error    = "(error)"
+    }
+
+    $color = $colors[$Status]
+    $symbol = $symbols[$Status]
+    $detailStr = if ($Details) { " - $Details" } else { "" }
+
+    Write-Host "[" -NoNewline
+    Write-Host "update" -ForegroundColor Blue -NoNewline
+    Write-Host "] " -NoNewline
+    Write-Host "$Manager" -ForegroundColor Magenta -NoNewline
+    Write-Host ": " -NoNewline
+    Write-Host $symbol -ForegroundColor $color -NoNewline
+    Write-Host " $Package" -ForegroundColor Gray -NoNewline
+    Write-Host $detailStr -ForegroundColor DarkGray
+}
+
+function Get-AppList {
+    $jsonPath = Join-Path $script:ScriptRoot "appList.json"
+    if (!(Test-Path $jsonPath)) {
+        Write-Host "Error: appList.json not found at: $jsonPath" -ForegroundColor Red
+        exit 1
+    }
+
+    $jsonContent = Get-Content $jsonPath -Raw
+
+    # Strip comments line by line for reliable parsing
+    $lines = $jsonContent -split "`r?`n"
+    $cleanLines = @()
+    foreach ($line in $lines) {
+        # Skip lines that are only comments (starting with //)
+        if ($line -match '^\s*//') { continue }
+
+        # For lines with actual JSON content, only strip trailing comments
+        # that come AFTER the closing } or ] or " and are not part of a URL
+        $cleanLine = $line
+
+        # Find trailing comment that's outside of strings
+        # Look for // that's preceded by }, ], ", or whitespace (not :)
+        if ($line -match '^(.*[}\]",])\s*//.*$') {
+            $cleanLine = $matches[1]
+        }
+
+        $cleanLines += $cleanLine
+    }
+    $jsonContent = $cleanLines -join "`n"
+
+    try {
+        return $jsonContent | ConvertFrom-Json
+    }
+    catch {
+        Write-Host "Error parsing appList.json: $_" -ForegroundColor Red
+        Write-Host "Debug: Check appList.json for invalid JSON syntax" -ForegroundColor Yellow
+        exit 1
+    }
+}
+
+#endregion
+
+#region Package Manager Functions
+
+function Test-WingetInstalled {
+    param([string]$PackageId)
+
+    if (!(Get-Command winget -ErrorAction SilentlyContinue)) { return $false }
+
+    $result = winget list --exact --id $PackageId 2>&1 | Out-String
+    return ($LASTEXITCODE -eq 0 -and $result -match [regex]::Escape($PackageId))
+}
+
 function Test-ChocoInstalled {
-	param ([string]$PackageName)
-	if (!(Get-Command choco -ErrorAction SilentlyContinue)) { return $false }
+    param([string]$PackageName)
 
-	# Method 1: Check Chocolatey lib directory (most reliable)
-	$chocoLibPath = "C:\ProgramData\chocolatey\lib\$PackageName"
-	if (Test-Path $chocoLibPath) {
-		return $true
-	}
+    if (!(Get-Command choco -ErrorAction SilentlyContinue)) { return $false }
 
-	# Method 2: Use choco list with --limit-output for machine-readable format
-	$tempOut = [System.IO.Path]::GetTempFileName()
-	$tempErr = [System.IO.Path]::GetTempFileName()
+    $chocoLibPath = "C:\ProgramData\chocolatey\lib\$PackageName"
+    if (Test-Path $chocoLibPath) { return $true }
 
-	try {
-		$process = Start-Process -FilePath "choco" `
-			-ArgumentList "list", $PackageName, "--local-only", "--limit-output" `
-			-Wait -PassThru -WindowStyle Hidden `
-			-RedirectStandardOutput $tempOut `
-			-RedirectStandardError $tempErr
-
-		# Wait a moment for files to be written
-		Start-Sleep -Milliseconds 100
-
-		$output = Get-Content $tempOut -Raw -ErrorAction SilentlyContinue
-		$errorOutput = Get-Content $tempErr -Raw -ErrorAction SilentlyContinue
-		$combinedOutput = if ($output) { $output } else { "" }
-		$combinedOutput += if ($errorOutput) { $errorOutput } else { "" }
-
-		# Check if package is in the output (case-insensitive)
-		# Format is typically: PackageName|Version or just PackageName in the list
-		$isInstalled = ($process.ExitCode -eq 0 -and $combinedOutput -match [regex]::Escape($PackageName))
-
-		Remove-Item $tempOut -Force -ErrorAction SilentlyContinue
-		Remove-Item $tempErr -Force -ErrorAction SilentlyContinue
-
-		return $isInstalled
-	} catch {
-		Remove-Item $tempOut -Force -ErrorAction SilentlyContinue
-		Remove-Item $tempErr -Force -ErrorAction SilentlyContinue
-		# Fallback: Check lib directory again
-		return (Test-Path $chocoLibPath)
-	}
+    $result = choco list $PackageName --local-only --limit-output 2>&1 | Out-String
+    return ($LASTEXITCODE -eq 0 -and $result -match "^$([regex]::Escape($PackageName))\|")
 }
 
-# Check if package is installed via Scoop
 function Test-ScoopInstalled {
-	param ([string]$PackageName)
-	if (!(Get-Command scoop -ErrorAction SilentlyContinue)) { return $false }
+    param([string]$PackageName)
 
-	# Check if running as admin - if so, spawn non-admin process
-	$isAdmin = Test-Administrator
+    if (!(Get-Command scoop -ErrorAction SilentlyContinue)) { return $false }
 
-	if ($isAdmin) {
-		# Spawn non-admin PowerShell process for Scoop
-		$tempScript = [System.IO.Path]::GetTempFileName() -replace '\.tmp$', '.ps1'
-		$resultFile = "$tempScript.result"
-
-		$scriptContent = @"
-`$ErrorActionPreference = 'Continue'
-try {
-	`$result = scoop list '$PackageName' 2>&1
-	`$output = `$result | Out-String
-	`$exitCode = `$LASTEXITCODE
-	@{ ExitCode = `$exitCode; Output = `$output } | ConvertTo-Json -Compress | Out-File '$resultFile' -Encoding utf8
-} catch {
-	@{ ExitCode = 1; Output = `$_.Exception.Message } | ConvertTo-Json -Compress | Out-File '$resultFile' -Encoding utf8
-}
-"@
-		$scriptContent | Out-File $tempScript -Encoding utf8
-
-		try {
-			$process = Start-Process -FilePath "powershell.exe" `
-				-ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$tempScript`"" `
-				-Wait -PassThru -WindowStyle Hidden
-
-			# Wait for result file
-			$maxWait = 5
-			$waited = 0
-			while (!(Test-Path $resultFile) -and $waited -lt $maxWait) {
-				Start-Sleep -Milliseconds 200
-				$waited += 0.2
-			}
-
-			if (Test-Path $resultFile) {
-				$resultJson = Get-Content $resultFile -Raw | ConvertFrom-Json
-				$exitCode = $resultJson.ExitCode
-				$output = $resultJson.Output
-				if ($output -is [System.Array]) { $output = $output -join "`n" }
-				if ($output -isnot [string]) { $output = $output.ToString() }
-
-				# Filter out "Installed apps matching" line
-				$output = $output -replace "Installed apps matching.*?:`r?`n", ""
-				$isInstalled = ($exitCode -eq 0 -and $output -match [regex]::Escape($PackageName))
-
-				Remove-Item $resultFile -Force -ErrorAction SilentlyContinue
-				Remove-Item $tempScript -Force -ErrorAction SilentlyContinue
-				return $isInstalled
-			} else {
-				Remove-Item $tempScript -Force -ErrorAction SilentlyContinue
-				return $false
-			}
-		} catch {
-			Remove-Item $tempScript -Force -ErrorAction SilentlyContinue
-			Remove-Item $resultFile -Force -ErrorAction SilentlyContinue
-			return $false
-		}
-	} else {
-		# Run directly if not admin
-		try {
-			$result = scoop list $PackageName 2>&1 | Out-String
-			$output = $result -replace "Installed apps matching.*?:`r?`n", ""
-			return ($LASTEXITCODE -eq 0 -and $output -match [regex]::Escape($PackageName))
-		} catch {
-			return $false
-		}
-	}
+    # Check scoop apps directory directly - most reliable method
+    $scoopDir = if ($env:SCOOP) { $env:SCOOP } else { Join-Path $env:USERPROFILE "scoop" }
+    $appPath = Join-Path $scoopDir "apps\$PackageName"
+    return (Test-Path $appPath)
 }
 
-# Get package version from Winget
-function Get-WinGetVersion {
-	param ([string]$PackageID)
-	if (!(Get-Command winget -ErrorAction SilentlyContinue)) { return $null }
-	try {
-		# Use winget list to get installed version (more reliable than show)
-		$info = winget list --exact -q $PackageID 2>&1 | Out-String
-		# Parse version from list output (format: PackageID  Version  Available)
-		# Improved regex to handle various version formats: x.y.z, x.y.z-beta, x.y.z.0, etc.
-		# Match pattern: PackageID followed by whitespace, then version number
-		if ($info -match "$([regex]::Escape($PackageID))\s+([\d.]+(?:[\-\.][\w]+)?)") {
-			return $matches[1].Trim()
-		}
-		# Alternative: try to match version pattern anywhere in the line
-		if ($info -match "(\d+\.\d+(?:\.\d+)?(?:[\-\.][\w]+)?)") {
-			return $matches[1].Trim()
-		}
-	} catch {
-		# Ignore errors
-	}
-	return $null
+function Update-WingetPackage {
+    param([string]$PackageId)
+
+    Write-Status -Manager "winget" -Package $PackageId -Status "Updating"
+
+    try {
+        $output = winget upgrade --id $PackageId --silent --accept-package-agreements --accept-source-agreements 2>&1 | Out-String
+        $exitCode = $LASTEXITCODE
+
+        $upToDatePatterns = @(
+            'No available upgrade found',
+            'No newer package versions are available',
+            'No applicable update found'
+        )
+
+        $isUpToDate = $false
+        foreach ($pattern in $upToDatePatterns) {
+            if ($output -imatch $pattern) {
+                $isUpToDate = $true
+                break
+            }
+        }
+
+        if ($exitCode -eq 0 -or $isUpToDate) {
+            if ($isUpToDate) {
+                Write-Status -Manager "winget" -Package $PackageId -Status "UpToDate"
+                $script:Summary.Updated += "winget: $PackageId (up to date)"
+            }
+            else {
+                Write-Status -Manager "winget" -Package $PackageId -Status "Success"
+                $script:Summary.Updated += "winget: $PackageId"
+            }
+            Write-Log -Message "SUCCESS: winget | $PackageId" -Type Success
+            return $true
+        }
+        else {
+            Write-Status -Manager "winget" -Package $PackageId -Status "Failed"
+            $script:Summary.Failed += "winget: $PackageId"
+            Write-Log -Message "FAILED: winget | $PackageId | Exit: $exitCode`n$output" -Type Error
+            return $false
+        }
+    }
+    catch {
+        Write-Status -Manager "winget" -Package $PackageId -Status "Error" -Details $_.Exception.Message
+        $script:Summary.Failed += "winget: $PackageId"
+        Write-Log -Message "ERROR: winget | $PackageId | $($_.Exception.Message)" -Type Error
+        return $false
+    }
 }
 
-# Get package version from Chocolatey
-function Get-ChocoVersion {
-	param ([string]$PackageName)
-	if (!(Get-Command choco -ErrorAction SilentlyContinue)) { return $null }
-	try {
-		$info = choco list $PackageName --local-only --exact 2>&1 | Out-String
-		# Parse version from list output - improved regex for various version formats
-		if ($info -match "$([regex]::Escape($PackageName))\s+([\d.]+(?:[\-\.][\w]+)?)") {
-			return $matches[1].Trim()
-		}
-	} catch {
-		# Ignore errors
-	}
-	return $null
-}
-
-# Get package version from Scoop
-function Get-ScoopVersion {
-	param ([string]$PackageName)
-	if (!(Get-Command scoop -ErrorAction SilentlyContinue)) { return $null }
-
-	# Check if running as admin - if so, spawn non-admin process
-	$isAdmin = Test-Administrator
-
-	if ($isAdmin) {
-		# Spawn non-admin PowerShell process for Scoop
-		$tempScript = [System.IO.Path]::GetTempFileName() -replace '\.tmp$', '.ps1'
-		$resultFile = "$tempScript.result"
-
-		$scriptContent = @"
-`$ErrorActionPreference = 'Continue'
-try {
-	# Try scoop info first (cleaner output)
-	`$info = scoop info '$PackageName' 2>&1 | Out-String
-	if (`$info -match 'Version:\s+([\d.]+(?:[\-\.][\w]+)?)') {
-		@{ Success = `$true; Version = `$matches[1].Trim() } | ConvertTo-Json -Compress | Out-File '$resultFile' -Encoding utf8
-		exit
-	}
-
-	# Fallback to scoop list
-	`$list = scoop list '$PackageName' 2>&1 | Out-String
-	`$list = `$list -replace 'Installed apps matching.*?:`r?`n', ''
-	if (`$list -match '$([regex]::Escape($PackageName))\s+([\d.]+(?:[\-\.][\w]+)?)') {
-		@{ Success = `$true; Version = `$matches[1].Trim() } | ConvertTo-Json -Compress | Out-File '$resultFile' -Encoding utf8
-	} else {
-		@{ Success = `$false; Version = `$null } | ConvertTo-Json -Compress | Out-File '$resultFile' -Encoding utf8
-	}
-} catch {
-	@{ Success = `$false; Version = `$null } | ConvertTo-Json -Compress | Out-File '$resultFile' -Encoding utf8
-}
-"@
-		$scriptContent | Out-File $tempScript -Encoding utf8
-
-		try {
-			$process = Start-Process -FilePath "powershell.exe" `
-				-ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$tempScript`"" `
-				-Wait -PassThru -WindowStyle Hidden
-
-			# Wait for result file
-			$maxWait = 5
-			$waited = 0
-			while (!(Test-Path $resultFile) -and $waited -lt $maxWait) {
-				Start-Sleep -Milliseconds 200
-				$waited += 0.2
-			}
-
-			if (Test-Path $resultFile) {
-				$resultJson = Get-Content $resultFile -Raw | ConvertFrom-Json
-				$version = if ($resultJson.Success) { $resultJson.Version } else { $null }
-				Remove-Item $resultFile -Force -ErrorAction SilentlyContinue
-				Remove-Item $tempScript -Force -ErrorAction SilentlyContinue
-				return $version
-			} else {
-				Remove-Item $tempScript -Force -ErrorAction SilentlyContinue
-				return $null
-			}
-		} catch {
-			Remove-Item $tempScript -Force -ErrorAction SilentlyContinue
-			Remove-Item $resultFile -Force -ErrorAction SilentlyContinue
-			return $null
-		}
-	} else {
-		# Run directly if not admin
-		try {
-			# Try scoop info first
-			$info = scoop info $PackageName 2>&1 | Out-String
-			if ($info -match "Version:\s+([\d.]+(?:[\-\.][\w]+)?)") {
-				return $matches[1].Trim()
-			}
-
-			# Fallback to scoop list
-			$list = scoop list $PackageName 2>&1 | Out-String
-			$list = $list -replace "Installed apps matching.*?:`r?`n", ""
-			if ($list -match "$([regex]::Escape($PackageName))\s+([\d.]+(?:[\-\.][\w]+)?)") {
-				return $matches[1].Trim()
-			}
-		} catch {
-			# Ignore errors
-		}
-		return $null
-	}
-}
-
-# Update package via Winget
-function Update-WinGetPackage {
-	param ([string]$PackageID, [array]$AdditionalArgs)
-
-	if (!(Get-Command winget -ErrorAction SilentlyContinue)) {
-		Write-ColorText "{Blue}[update] {Magenta}winget: {Red}(skipped) {Gray}$PackageID {DarkGray}(winget not installed)"
-		$script:updateSummary.Skipped += "winget: $PackageID (winget not installed)"
-		return $false
-	}
-
-	try {
-		$oldVersion = Get-WinGetVersion -PackageID $PackageID
-
-		# First, check if package needs updating using winget list
-		# winget list shows "Installed Version" and "Available Version" columns
-		$listOutput = winget list --exact -q $PackageID 2>&1 | Out-String
-		$needsUpdate = $false
-
-		# Check if there's an available version different from installed
-		# Format: PackageID  InstalledVersion  AvailableVersion
-		if ($listOutput -match "$([regex]::Escape($PackageID))\s+([\d.]+(?:[\-\.][\w]+)?)\s+([\d.]+(?:[\-\.][\w]+)?)") {
-			$installedVer = $matches[1].Trim()
-			$availableVer = $matches[2].Trim()
-			if ($installedVer -ne $availableVer) {
-				$needsUpdate = $true
-			}
-		} elseif ($listOutput -match "$([regex]::Escape($PackageID))\s+([\d.]+(?:[\-\.][\w]+)?)") {
-			# Only one version shown (installed) - check if it matches oldVersion
-			$installedVer = $matches[1].Trim()
-			if ($oldVersion -and $installedVer -ne $oldVersion) {
-				$needsUpdate = $true
-			}
-		}
-
-		# If we know it doesn't need updating, skip the upgrade
-		if (!$needsUpdate -and $oldVersion) {
-			$versionInfo = $oldVersion
-			$entry = "✅ winget | $PackageID | $versionInfo (already up to date)"
-			$entry | Out-File $successLog -Append -Encoding utf8
-			$script:updateSummary.Updated += "winget: $PackageID ($versionInfo - already up to date)"
-			Write-ColorText "{Blue}[update] {Magenta}winget: {Green}(up to date) {Gray}$PackageID {DarkGray}($versionInfo)"
-			return $true
-		}
-
-		# Use --silent to suppress UI prompts
-		$updateCmd = "winget upgrade `"$PackageID`" --accept-package-agreements --accept-source-agreements --silent"
-
-		if ($AdditionalArgs.Count -ge 1) {
-			$updateCmd += " $($AdditionalArgs -join ' ')"
-		}
-
-		Write-ColorText "{Blue}[update] {Magenta}winget: {Gray}Updating $PackageID..."
-		$output = Invoke-Expression "$updateCmd 2>&1" | Out-String
-		$exitCode = $LASTEXITCODE
-
-		# Check if package is already up to date
-		# Primary method: Check output for "already up to date" messages (case-insensitive)
-		$isAlreadyUpToDate = $false
-		$upToDatePatterns = @(
-			'No available upgrade found',
-			'No newer package versions are available',
-			'No newer package versions are available from the configured sources',
-			'No applicable update found',
-			'already installed',
-			'is already up to date',
-			'No upgrade available',
-			'No updates available'
-		)
-		foreach ($pattern in $upToDatePatterns) {
-			# Case-insensitive match
-			if ($output -imatch $pattern) {
-				$isAlreadyUpToDate = $true
-				break
-			}
-		}
-
-		# Secondary method: If exit code is 0, check if version changed
-		# Winget returns exit code 0 when no upgrade is available
-		if ($exitCode -eq 0 -and !$isAlreadyUpToDate) {
-			Start-Sleep -Milliseconds 500  # Brief delay to ensure version info is updated
-			$newVersion = Get-WinGetVersion -PackageID $PackageID
-			# If versions are the same (or both exist and match), it's up to date
-			if ($oldVersion -and $newVersion) {
-				if ($oldVersion -eq $newVersion) {
-					$isAlreadyUpToDate = $true
-				}
-			} elseif ($oldVersion -and !$newVersion) {
-				# Old version exists but new doesn't - might be an error, don't assume up to date
-			} elseif (!$oldVersion -and $newVersion) {
-				# Couldn't get old version but got new version - if exit code is 0, likely up to date
-				# This handles cases where initial version detection failed
-				$isAlreadyUpToDate = $true
-			} elseif (!$oldVersion -and !$newVersion) {
-				# Can't determine version - if exit code is 0, assume up to date (better than failing)
-				$isAlreadyUpToDate = $true
-			}
-		}
-
-		if ($exitCode -eq 0 -or $isAlreadyUpToDate) {
-			# Success or already up to date
-			# Try to parse version from output first - improved regex patterns
-			$parsedVersion = $null
-			if ($output -match 'Version[:\s]+([\d.]+(?:[\-\.][\w]+)?)') {
-				$parsedVersion = $matches[1].Trim()
-			} elseif ($output -match 'Upgraded to[:\s]+([\d.]+(?:[\-\.][\w]+)?)') {
-				$parsedVersion = $matches[1].Trim()
-			} elseif ($output -match '(\d+\.\d+(?:\.\d+)?(?:[\-\.][\w]+)?)') {
-				$parsedVersion = $matches[1].Trim()
-			}
-
-			# Fall back to querying if parsing failed
-			$newVersion = if ($parsedVersion) { $parsedVersion } else { Get-WinGetVersion -PackageID $PackageID }
-
-			if ($isAlreadyUpToDate) {
-				# Already up to date - show current version
-				$versionInfo = if ($newVersion) { $newVersion } else { if ($oldVersion) { $oldVersion } else { "current" } }
-				$entry = "✅ winget | $PackageID | $versionInfo (already up to date)"
-				$entry | Out-File $successLog -Append -Encoding utf8
-				$script:updateSummary.Updated += "winget: $PackageID ($versionInfo - already up to date)"
-				Write-ColorText "{Blue}[update] {Magenta}winget: {Green}(up to date) {Gray}$PackageID {DarkGray}($versionInfo)"
-			} else {
-				# Successfully updated
-				$versionInfo = if ($oldVersion -and $newVersion -and $oldVersion -ne $newVersion) {
-					"$oldVersion -> $newVersion"
-				} elseif ($newVersion) {
-					"$newVersion"
-				} else {
-					"updated"
-				}
-				$entry = "✅ winget | $PackageID | $versionInfo"
-				$entry | Out-File $successLog -Append -Encoding utf8
-				$script:updateSummary.Updated += "winget: $PackageID ($versionInfo)"
-				Write-ColorText "{Blue}[update] {Magenta}winget: {Green}(success) {Gray}$PackageID {DarkGray}($versionInfo)"
-			}
-			return $true
-		} else {
-			$errorEntry = "❌ winget | $PackageID | Exit Code: $exitCode`n$output"
-			$errorEntry | Out-File $errorLog -Append -Encoding utf8
-			$script:updateSummary.Failed += "winget: $PackageID"
-			Write-ColorText "{Blue}[update] {Magenta}winget: {Red}(failed) {Gray}$PackageID"
-			return $false
-		}
-	} catch {
-		$errorMsg = $_.Exception.Message
-		$errorEntry = "❌ winget | $PackageID | Exception: $errorMsg`n$($_.ScriptStackTrace)"
-		$errorEntry | Out-File $errorLog -Append -Encoding utf8
-		$script:updateSummary.Failed += "winget: $PackageID"
-		Write-ColorText "{Blue}[update] {Magenta}winget: {Red}(error) {Gray}$PackageID {DarkGray}($errorMsg)"
-		return $false
-	}
-}
-
-# Update package via Chocolatey
 function Update-ChocoPackage {
-	param ([string]$PackageName, [array]$AdditionalArgs)
+    param([string]$PackageName)
 
-	if (!(Get-Command choco -ErrorAction SilentlyContinue)) {
-		Write-ColorText "{Blue}[update] {Magenta}choco: {Red}(skipped) {Gray}$PackageName {DarkGray}(chocolatey not installed)"
-		$script:updateSummary.Skipped += "choco: $PackageName (chocolatey not installed)"
-		return $false
-	}
+    Write-Status -Manager "choco" -Package $PackageName -Status "Updating"
 
-	try {
-		$oldVersion = Get-ChocoVersion -PackageName $PackageName
+    try {
+        $output = choco upgrade $PackageName -y -r --no-progress 2>&1 | Out-String
+        $exitCode = $LASTEXITCODE
 
-		# First, check if package is outdated using choco outdated
-		# This is more reliable than parsing upgrade output
-		$isOutdated = $false
-		$tempOutdated = [System.IO.Path]::GetTempFileName()
-		$tempErrOutdated = [System.IO.Path]::GetTempFileName()
+        $upToDatePatterns = @(
+            'already installed',
+            'is already the latest version',
+            'Chocolatey upgraded 0/',
+            '0 packages upgraded'
+        )
 
-		try {
-			$outdatedProcess = Start-Process -FilePath "choco" `
-				-ArgumentList "outdated", $PackageName, "--limit-output" `
-				-Wait -PassThru -WindowStyle Hidden `
-				-RedirectStandardOutput $tempOutdated `
-				-RedirectStandardError $tempErrOutdated
+        $isUpToDate = $false
+        foreach ($pattern in $upToDatePatterns) {
+            if ($output -imatch $pattern) {
+                $isUpToDate = $true
+                break
+            }
+        }
 
-			Start-Sleep -Milliseconds 100
-
-			$outdatedOutput = Get-Content $tempOutdated -Raw -ErrorAction SilentlyContinue
-			$outdatedError = Get-Content $tempErrOutdated -Raw -ErrorAction SilentlyContinue
-			$combinedOutdated = if ($outdatedOutput) { $outdatedOutput } else { "" }
-			$combinedOutdated += if ($outdatedError) { $outdatedError } else { "" }
-
-			# If package appears in outdated list, it needs updating
-			# Format: PackageName|InstalledVersion|AvailableVersion
-			if ($combinedOutdated -match "^$([regex]::Escape($PackageName))\|") {
-				$isOutdated = $true
-			}
-
-			Remove-Item $tempOutdated -Force -ErrorAction SilentlyContinue
-			Remove-Item $tempErrOutdated -Force -ErrorAction SilentlyContinue
-		} catch {
-			Remove-Item $tempOutdated -Force -ErrorAction SilentlyContinue
-			Remove-Item $tempErrOutdated -Force -ErrorAction SilentlyContinue
-			# If outdated check fails, assume we need to check via upgrade
-			$isOutdated = $null  # Unknown - will check via upgrade output
-		}
-
-		# If we know it's not outdated, skip the upgrade
-		if ($isOutdated -eq $false) {
-			$versionInfo = if ($oldVersion) { $oldVersion } else { "current" }
-			$entry = "✅ choco | $PackageName | $versionInfo (already up to date)"
-			$entry | Out-File $successLog -Append -Encoding utf8
-			$script:updateSummary.Updated += "choco: $PackageName ($versionInfo - already up to date)"
-			Write-ColorText "{Blue}[update] {Magenta}choco: {Green}(up to date) {Gray}$PackageName {DarkGray}($versionInfo)"
-			return $true
-		}
-
-		# Check if this is a psmodule package - these need PowerShell 5.1
-		$isPsModule = $PackageName -like "*psmodule"
-
-		if ($isPsModule) {
-			# For psmodule packages, run in PowerShell 5.1 context
-			Write-ColorText "{Blue}[update] {Magenta}choco: {Gray}Updating $PackageName (PowerShell module - using PowerShell 5.1)..."
-
-			$tempScript = [System.IO.Path]::GetTempFileName() -replace '\.tmp$', '.ps1'
-			$resultFile = "$tempScript.result"
-
-			$updateCmd = "choco upgrade $PackageName -y -r --no-progress"
-			if ($AdditionalArgs.Count -ge 1) {
-				$updateCmd += " $($AdditionalArgs -join ' ')"
-			}
-
-			# Create script that imports PowerShellGet and runs choco upgrade
-			$scriptContent = @"
-`$ErrorActionPreference = 'Continue'
-try {
-	# Import PowerShellGet module (required for Update-Module in psmodule packages)
-	Import-Module PowerShellGet -ErrorAction SilentlyContinue
-
-	# Run choco upgrade
-	`$result = Invoke-Expression '$updateCmd 2>&1'
-	`$output = `$result | Out-String
-	`$exitCode = `$LASTEXITCODE
-
-	@{ ExitCode = `$exitCode; Output = `$output } | ConvertTo-Json -Compress | Out-File '$resultFile' -Encoding utf8
-} catch {
-	@{ ExitCode = 1; Output = `$_.Exception.Message } | ConvertTo-Json -Compress | Out-File '$resultFile' -Encoding utf8
-}
-"@
-			$scriptContent | Out-File $tempScript -Encoding utf8
-
-			try {
-				# Run in PowerShell 5.1 (powershell.exe, not pwsh.exe)
-				$process = Start-Process -FilePath "powershell.exe" `
-					-ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$tempScript`"" `
-					-Wait -PassThru -WindowStyle Hidden
-
-				# Wait for result file with timeout
-				$maxWait = 30  # psmodule packages can take longer
-				$waited = 0
-				while (!(Test-Path $resultFile) -and $waited -lt $maxWait) {
-					Start-Sleep -Milliseconds 500
-					$waited += 0.5
-				}
-
-				# Read result
-				if (Test-Path $resultFile) {
-					$resultJson = Get-Content $resultFile -Raw | ConvertFrom-Json
-					$exitCode = $resultJson.ExitCode
-					$output = $resultJson.Output
-					# Ensure output is a string (JSON might return it as an array or object)
-					if ($output -is [System.Array]) {
-						$output = $output -join "`n"
-					}
-					if ($output -isnot [string]) {
-						$output = $output.ToString()
-					}
-					Remove-Item $resultFile -Force -ErrorAction SilentlyContinue
-				} else {
-					$exitCode = if ($process.ExitCode) { $process.ExitCode } else { 1 }
-					$output = "Process completed but result file not found. Exit code: $exitCode"
-				}
-
-				Remove-Item $tempScript -Force -ErrorAction SilentlyContinue
-			} catch {
-				$exitCode = 1
-				$output = "Failed to run in PowerShell 5.1: $($_.Exception.Message)"
-				Remove-Item $tempScript -Force -ErrorAction SilentlyContinue
-				Remove-Item $resultFile -Force -ErrorAction SilentlyContinue
-			}
-		} else {
-			# Regular package - run normally
-			$updateCmd = "choco upgrade $PackageName -y -r --no-progress"
-			if ($AdditionalArgs.Count -ge 1) {
-				$updateCmd += " $($AdditionalArgs -join ' ')"
-			}
-
-			Write-ColorText "{Blue}[update] {Magenta}choco: {Gray}Updating $PackageName..."
-			$output = Invoke-Expression "$updateCmd 2>&1" | Out-String
-			$exitCode = $LASTEXITCODE
-		}
-
-		# Check if package is already up to date
-		# Chocolatey can return exit code 0 or non-zero when no upgrade is available
-		# Check output for "already up to date" messages regardless of exit code
-		$isAlreadyUpToDate = $false
-		$upToDatePatterns = @(
-			'already installed',
-			'is already the latest version',
-			'is the latest version available',
-			'Nothing to change',
-			'No packages to upgrade',
-			'up to date',
-			'Chocolatey upgraded 0/',
-			'upgraded 0/',
-			'0 packages upgraded',
-			'0 of 1 packages upgraded'
-		)
-		foreach ($pattern in $upToDatePatterns) {
-			# Case-insensitive match
-			if ($output -imatch $pattern) {
-				$isAlreadyUpToDate = $true
-				break
-			}
-		}
-
-		# Also check: if exit code is 0 and version didn't change, treat as up to date
-		# This is the most reliable check
-		if ($exitCode -eq 0 -and !$isAlreadyUpToDate) {
-			Start-Sleep -Milliseconds 500  # Brief delay to ensure version info is updated
-			$newVersion = Get-ChocoVersion -PackageName $PackageName
-			if ($oldVersion -and $newVersion) {
-				if ($oldVersion -eq $newVersion) {
-					$isAlreadyUpToDate = $true
-				}
-			} elseif (!$oldVersion -and $newVersion) {
-				# Couldn't get old version but got new version
-				# Check output more carefully - if it says "upgraded 0/", it's up to date
-				if ($output -imatch 'upgraded\s+0/') {
-					$isAlreadyUpToDate = $true
-				}
-			}
-		}
-
-		if ($exitCode -eq 0 -or $isAlreadyUpToDate) {
-			# Success or already up to date
-			# Try to parse version from output first - improved regex patterns
-			$parsedVersion = $null
-			if ($output -match 'upgraded to[:\s]+([\d.]+(?:[\-\.][\w]+)?)') {
-				$parsedVersion = $matches[1].Trim()
-			} elseif ($output -match "$([regex]::Escape($PackageName))\s+([\d.]+(?:[\-\.][\w]+)?)") {
-				$parsedVersion = $matches[1].Trim()
-			} elseif ($output -match '(\d+\.\d+(?:\.\d+)?(?:[\-\.][\w]+)?)') {
-				$parsedVersion = $matches[1].Trim()
-			}
-
-			# Fall back to querying if parsing failed
-			$newVersion = if ($parsedVersion) { $parsedVersion } else { Get-ChocoVersion -PackageName $PackageName }
-
-			if ($isAlreadyUpToDate) {
-				# Already up to date - show current version
-				$versionInfo = if ($newVersion) { $newVersion } else { if ($oldVersion) { $oldVersion } else { "current" } }
-				$entry = "✅ choco | $PackageName | $versionInfo (already up to date)"
-				$entry | Out-File $successLog -Append -Encoding utf8
-				$script:updateSummary.Updated += "choco: $PackageName ($versionInfo - already up to date)"
-				Write-ColorText "{Blue}[update] {Magenta}choco: {Green}(up to date) {Gray}$PackageName {DarkGray}($versionInfo)"
-			} else {
-				# Successfully updated
-				$versionInfo = if ($oldVersion -and $newVersion -and $oldVersion -ne $newVersion) {
-					"$oldVersion -> $newVersion"
-				} elseif ($newVersion) {
-					"$newVersion"
-				} else {
-					"updated"
-				}
-				$entry = "✅ choco | $PackageName | $versionInfo"
-				$entry | Out-File $successLog -Append -Encoding utf8
-				$script:updateSummary.Updated += "choco: $PackageName ($versionInfo)"
-				Write-ColorText "{Blue}[update] {Magenta}choco: {Green}(success) {Gray}$PackageName {DarkGray}($versionInfo)"
-			}
-			return $true
-		} else {
-			$errorEntry = "❌ choco | $PackageName | Exit Code: $exitCode`n$output"
-			$errorEntry | Out-File $errorLog -Append -Encoding utf8
-			$script:updateSummary.Failed += "choco: $PackageName"
-			Write-ColorText "{Blue}[update] {Magenta}choco: {Red}(failed) {Gray}$PackageName"
-			return $false
-		}
-	} catch {
-		$errorMsg = $_.Exception.Message
-		$errorEntry = "❌ choco | $PackageName | Exception: $errorMsg`n$($_.ScriptStackTrace)"
-		$errorEntry | Out-File $errorLog -Append -Encoding utf8
-		$script:updateSummary.Failed += "choco: $PackageName"
-		Write-ColorText "{Blue}[update] {Magenta}choco: {Red}(error) {Gray}$PackageName {DarkGray}($errorMsg)"
-		return $false
-	}
+        if ($exitCode -eq 0) {
+            if ($isUpToDate) {
+                Write-Status -Manager "choco" -Package $PackageName -Status "UpToDate"
+                $script:Summary.Updated += "choco: $PackageName (up to date)"
+            }
+            else {
+                Write-Status -Manager "choco" -Package $PackageName -Status "Success"
+                $script:Summary.Updated += "choco: $PackageName"
+            }
+            Write-Log -Message "SUCCESS: choco | $PackageName" -Type Success
+            return $true
+        }
+        else {
+            Write-Status -Manager "choco" -Package $PackageName -Status "Failed"
+            $script:Summary.Failed += "choco: $PackageName"
+            Write-Log -Message "FAILED: choco | $PackageName | Exit: $exitCode`n$output" -Type Error
+            return $false
+        }
+    }
+    catch {
+        Write-Status -Manager "choco" -Package $PackageName -Status "Error" -Details $_.Exception.Message
+        $script:Summary.Failed += "choco: $PackageName"
+        Write-Log -Message "ERROR: choco | $PackageName | $($_.Exception.Message)" -Type Error
+        return $false
+    }
 }
 
-# Update package via Scoop (must run as non-admin)
 function Update-ScoopPackage {
-	param ([string]$PackageName, [array]$AdditionalArgs)
+    param([string]$PackageName)
 
-	if (!(Get-Command scoop -ErrorAction SilentlyContinue)) {
-		Write-ColorText "{Blue}[update] {Magenta}scoop: {Red}(skipped) {Gray}$PackageName {DarkGray}(scoop not installed)"
-		$script:updateSummary.Skipped += "scoop: $PackageName (scoop not installed)"
-		return $false
-	}
+    Write-Status -Manager "scoop" -Package $PackageName -Status "Updating"
 
-	try {
-		$oldVersion = Get-ScoopVersion -PackageName $PackageName
-		$updateCmd = "scoop update $PackageName"
+    try {
+        $output = scoop update $PackageName 2>&1 | Out-String
+        $exitCode = $LASTEXITCODE
 
-		if ($AdditionalArgs.Count -ge 1) {
-			$updateCmd += " $($AdditionalArgs -join ' ')"
-		}
+        $upToDatePatterns = @(
+            'Latest version',
+            '\(latest version\)',
+            'is already up to date'
+        )
 
-		# Check if running as admin - if so, spawn non-admin process
-		$isAdmin = Test-Administrator
+        $isUpToDate = $false
+        foreach ($pattern in $upToDatePatterns) {
+            if ($output -imatch $pattern) {
+                $isUpToDate = $true
+                break
+            }
+        }
 
-		# First, check if update is available (dry run or check)
-		# Scoop update will show status in output, so we'll parse it
-		if ($isAdmin) {
-			# Spawn non-admin PowerShell process for Scoop
-			# Use timestamp + random to prevent conflicts
-			$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-			$random = Get-Random
-			$tempScript = Join-Path $env:TEMP "scoop_update_${timestamp}_${random}.ps1"
-			$resultFile = "$tempScript.result"
-
-			$scriptContent = @"
-`$ErrorActionPreference = 'Continue'
-try {
-	`$result = Invoke-Expression '$updateCmd 2>&1'
-	`$output = `$result | Out-String
-	`$exitCode = `$LASTEXITCODE
-	@{
-		ExitCode = `$exitCode
-		Output = `$output
-	} | ConvertTo-Json -Compress | Out-File '$resultFile' -Encoding utf8
-} catch {
-	@{
-		ExitCode = 1
-		Output = `$_.Exception.Message
-	} | ConvertTo-Json -Compress | Out-File '$resultFile' -Encoding utf8
-}
-"@
-			$scriptContent | Out-File $tempScript -Encoding utf8
-
-			try {
-				# Spawn non-admin process (use WindowStyle Hidden, not NoNewWindow)
-				$process = Start-Process -FilePath "powershell.exe" `
-					-ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$tempScript`"" `
-					-Wait -PassThru -WindowStyle Hidden
-
-				# Wait for result file with timeout (max 5 seconds)
-				$maxWait = 5
-				$waited = 0
-				while (!(Test-Path $resultFile) -and $waited -lt $maxWait) {
-					Start-Sleep -Milliseconds 200
-					$waited += 0.2
-				}
-
-				# Read result
-				if (Test-Path $resultFile) {
-					$resultJson = Get-Content $resultFile -Raw | ConvertFrom-Json
-					$exitCode = $resultJson.ExitCode
-					$output = $resultJson.Output
-					# Ensure output is a string (JSON might return it as an array or object)
-					if ($output -is [System.Array]) {
-						$output = $output -join "`n"
-					}
-					if ($output -isnot [string]) {
-						$output = $output.ToString()
-					}
-					Remove-Item $resultFile -Force -ErrorAction SilentlyContinue
-				} else {
-					$exitCode = if ($process.ExitCode) { $process.ExitCode } else { 1 }
-					$output = "Process completed but result file not found. Exit code: $exitCode"
-				}
-
-				# Cleanup
-				Remove-Item $tempScript -Force -ErrorAction SilentlyContinue
-			} catch {
-				$exitCode = 1
-				$output = "Failed to spawn non-admin process: $($_.Exception.Message)"
-				Remove-Item $tempScript -Force -ErrorAction SilentlyContinue
-				Remove-Item $resultFile -Force -ErrorAction SilentlyContinue
-			}
-		} else {
-			# Run directly if not admin
-			try {
-				$output = Invoke-Expression "$updateCmd 2>&1" | Out-String
-				$exitCode = $LASTEXITCODE
-			} catch {
-				$output = $_.Exception.Message
-				$exitCode = 1
-			}
-		}
-
-		# Check if package is already up to date
-		# Scoop can return exit code 0 or non-zero when no update is available
-		# Check output for "already up to date" messages regardless of exit code
-		$isAlreadyUpToDate = $false
-
-		# First, check for the specific pattern: "PackageName: Version (latest version)"
-		# This is the most reliable indicator - check this FIRST before other patterns
-		if ($output -and $output -imatch "$([regex]::Escape($PackageName)):.*\(latest version\)") {
-			$isAlreadyUpToDate = $true
-		}
-
-		# Also check for other "up to date" patterns
-		if (!$isAlreadyUpToDate -and $output) {
-			$upToDatePatterns = @(
-				'already installed',
-				'is already up to date',
-				'Latest version installed',
-				'No updates available',
-				'is the latest version',
-				'is up to date',
-				'is already the latest version',
-				'\(latest version\)',
-				'latest version\)',
-				'Latest versions for all apps are installed',
-				'Latest versions for all apps are installed!'
-			)
-			foreach ($pattern in $upToDatePatterns) {
-				# Case-insensitive match
-				if ($output -imatch $pattern) {
-					$isAlreadyUpToDate = $true
-					break
-				}
-			}
-		}
-
-		# Also check: if exit code is 0 and version didn't change, treat as up to date
-		# This is the most reliable check as a fallback
-		if ($exitCode -eq 0 -and !$isAlreadyUpToDate) {
-			Start-Sleep -Milliseconds 500  # Brief delay to ensure version info is updated
-			$newVersion = Get-ScoopVersion -PackageName $PackageName
-			if ($oldVersion -and $newVersion) {
-				if ($oldVersion -eq $newVersion) {
-					$isAlreadyUpToDate = $true
-				}
-			} elseif (!$oldVersion -and $newVersion) {
-				# Couldn't get old version but got new version
-				# Check output for "latest version" message as final check
-				if ($output -and $output -imatch 'latest version') {
-					$isAlreadyUpToDate = $true
-				}
-			} elseif ($oldVersion -and !$newVersion) {
-				# Got old version but couldn't get new version
-				# If output says "latest version", assume up to date
-				if ($output -and $output -imatch 'latest version') {
-					$isAlreadyUpToDate = $true
-				}
-			}
-		}
-
-		if ($exitCode -eq 0 -or $isAlreadyUpToDate) {
-			# Success or already up to date
-			# Try to parse version from output first - improved regex patterns
-			$parsedVersion = $null
-			if ($output -match 'Updated\s+.*?to\s+([\d.]+(?:[\-\.][\w]+)?)') {
-				$parsedVersion = $matches[1].Trim()
-			} elseif ($output -match "$([regex]::Escape($PackageName)):?\s+([\d.]+(?:[\-\.][\w]+)?)") {
-				$parsedVersion = $matches[1].Trim()
-			} elseif ($output -match '(\d+\.\d+(?:\.\d+)?(?:[\-\.][\w]+)?)') {
-				$parsedVersion = $matches[1].Trim()
-			}
-
-			# Fall back to querying if parsing failed
-			$newVersion = if ($parsedVersion) { $parsedVersion } else { Get-ScoopVersion -PackageName $PackageName }
-
-			if ($isAlreadyUpToDate) {
-				# Already up to date - show current version
-				# Get version info for display
-				$displayVersion = if ($newVersion) { $newVersion } else { if ($oldVersion) { $oldVersion } else { Get-ScoopVersion -PackageName $PackageName } }
-				$versionInfo = if ($displayVersion) { $displayVersion } else { "current" }
-				$entry = "✅ scoop | $PackageName | $versionInfo (already up to date)"
-				$entry | Out-File $successLog -Append -Encoding utf8
-				$script:updateSummary.Updated += "scoop: $PackageName ($versionInfo - already up to date)"
-				Write-ColorText "{Blue}[update] {Magenta}scoop: {Green}(up to date) {Gray}$PackageName {DarkGray}($versionInfo)"
-			} else {
-				# Successfully updated - only show this if version actually changed
-				$versionInfo = if ($oldVersion -and $newVersion -and $oldVersion -ne $newVersion) {
-					"$oldVersion -> $newVersion"
-				} elseif ($newVersion) {
-					"$newVersion"
-				} else {
-					"updated"
-				}
-				$entry = "✅ scoop | $PackageName | $versionInfo"
-				$entry | Out-File $successLog -Append -Encoding utf8
-				$script:updateSummary.Updated += "scoop: $PackageName ($versionInfo)"
-				Write-ColorText "{Blue}[update] {Magenta}scoop: {Green}(success) {Gray}$PackageName {DarkGray}($versionInfo)"
-			}
-			$null = return $true  # Suppress return value output
-		} else {
-			$errorEntry = "❌ scoop | $PackageName | Exit Code: $exitCode`n$output"
-			$errorEntry | Out-File $errorLog -Append -Encoding utf8
-			$script:updateSummary.Failed += "scoop: $PackageName"
-			Write-ColorText "{Blue}[update] {Magenta}scoop: {Red}(failed) {Gray}$PackageName"
-			$null = return $false  # Suppress return value output
-		}
-	} catch {
-		$errorMsg = $_.Exception.Message
-		$errorEntry = "❌ scoop | $PackageName | Exception: $errorMsg`n$($_.ScriptStackTrace)"
-		$errorEntry | Out-File $errorLog -Append -Encoding utf8
-		$script:updateSummary.Failed += "scoop: $PackageName"
-		Write-ColorText "{Blue}[update] {Magenta}scoop: {Red}(error) {Gray}$PackageName {DarkGray}($errorMsg)"
-		return $false
-	}
+        if ($exitCode -eq 0 -or $isUpToDate) {
+            if ($isUpToDate) {
+                Write-Status -Manager "scoop" -Package $PackageName -Status "UpToDate"
+                $script:Summary.Updated += "scoop: $PackageName (up to date)"
+            }
+            else {
+                Write-Status -Manager "scoop" -Package $PackageName -Status "Success"
+                $script:Summary.Updated += "scoop: $PackageName"
+            }
+            Write-Log -Message "SUCCESS: scoop | $PackageName" -Type Success
+            return $true
+        }
+        else {
+            Write-Status -Manager "scoop" -Package $PackageName -Status "Failed"
+            $script:Summary.Failed += "scoop: $PackageName"
+            Write-Log -Message "FAILED: scoop | $PackageName | Exit: $exitCode`n$output" -Type Error
+            return $false
+        }
+    }
+    catch {
+        Write-Status -Manager "scoop" -Package $PackageName -Status "Error" -Details $_.Exception.Message
+        $script:Summary.Failed += "scoop: $PackageName"
+        Write-Log -Message "ERROR: scoop | $PackageName | $($_.Exception.Message)" -Type Error
+        return $false
+    }
 }
 
-# Main update logic
-Write-ColorText "`n{Green}Starting application updates...`n"
+#endregion
 
-# Load appList.json
-$jsonPath = Join-Path $scriptRoot "appList.json"
-if (!(Test-Path $jsonPath)) {
-	Write-Error "appList.json not found at: $jsonPath"
-	exit 1
+#region Process Functions
+
+function Invoke-WingetUpdates {
+    param([array]$Packages)
+
+    if (!(Get-Command winget -ErrorAction SilentlyContinue)) {
+        Write-Host "`nWinget is not installed. Skipping Winget packages." -ForegroundColor Yellow
+        $script:Summary.Skipped += "winget: all packages (not installed)"
+        return
+    }
+
+    Write-Host "`n--- Processing Winget Packages ---" -ForegroundColor Cyan
+
+    foreach ($pkg in $Packages) {
+        $packageId = $pkg.packageId
+        if ([string]::IsNullOrWhiteSpace($packageId)) { continue }
+
+        if (Test-WingetInstalled -PackageId $packageId) {
+            Update-WingetPackage -PackageId $packageId | Out-Null
+        }
+        else {
+            Write-Status -Manager "winget" -Package $packageId -Status "Skipped" -Details "not installed"
+            $script:Summary.Skipped += "winget: $packageId (not installed)"
+        }
+    }
 }
 
-$json = Get-Content $jsonPath -Raw | ConvertFrom-Json
+function Invoke-ChocoUpdates {
+    param([array]$Packages)
 
-# Process packages by manager (priority order: Winget > Choco > Scoop)
-$managersToProcess = @()
-if ($processWinget) { $managersToProcess += "Winget" }
-if ($processChoco) { $managersToProcess += "Chocolatey" }
-if ($processScoop) { $managersToProcess += "Scoop" }
+    if (!(Get-Command choco -ErrorAction SilentlyContinue)) {
+        Write-Host "`nChocolatey is not installed. Skipping Choco packages." -ForegroundColor Yellow
+        $script:Summary.Skipped += "choco: all packages (not installed)"
+        return
+    }
 
-if ($managersToProcess.Count -eq 0) {
-	Write-ColorText "`n{Red}No package managers selected. Use -Winget, -Choco, or -Scoop to specify.`n"
-	exit 1
+    Write-Host "`n--- Processing Chocolatey Packages ---" -ForegroundColor Cyan
+
+    foreach ($pkg in $Packages) {
+        $packageName = $pkg.packageName
+        if ([string]::IsNullOrWhiteSpace($packageName)) { continue }
+
+        if (Test-ChocoInstalled -PackageName $packageName) {
+            Update-ChocoPackage -PackageName $packageName | Out-Null
+        }
+        else {
+            Write-Status -Manager "choco" -Package $packageName -Status "Skipped" -Details "not installed"
+            $script:Summary.Skipped += "choco: $packageName (not installed)"
+        }
+    }
 }
 
-Write-ColorText "`n{ Cyan}Processing packages by manager: $($managersToProcess -join ', ')...`n"
+function Invoke-ScoopUpdates {
+    param([array]$Packages)
 
-# Process Winget packages first (highest priority)
-if ($processWinget -and $json.installSource.winget.autoInstall -eq $true) {
-	# Check if Winget is installed
-	if (Get-Command winget -ErrorAction SilentlyContinue) {
-		Write-ColorText "`n{ Cyan}Processing Winget packages...`n"
-		$wingetPkgs = $json.installSource.winget.packageList
-		$wingetArgs = $json.installSource.winget.additionalArgs
+    if (!(Get-Command scoop -ErrorAction SilentlyContinue)) {
+        Write-Host "`nScoop is not installed. Skipping Scoop packages." -ForegroundColor Yellow
+        $script:Summary.Skipped += "scoop: all packages (not installed)"
+        return
+    }
 
-		foreach ($pkg in $wingetPkgs) {
-			$pkgId = $pkg.packageId
-			$isInstalled = Test-WinGetInstalled -PackageID $pkgId
-			if ($isInstalled) {
-				$null = Update-WinGetPackage -PackageID $pkgId -AdditionalArgs $wingetArgs
-			} else {
-				$script:updateSummary.Skipped += "winget: $pkgId (not installed)"
-			}
-		}
-	} else {
-		Write-ColorText "`n{Yellow}[update] {Magenta}winget: {Gray}Winget is not installed. Skipping Winget packages.`n"
-		$script:updateSummary.Skipped += "winget: all packages (winget not installed)"
-	}
+    Write-Host "`n--- Processing Scoop Packages ---" -ForegroundColor Cyan
+
+    foreach ($pkg in $Packages) {
+        $packageName = $pkg.packageName
+        if ([string]::IsNullOrWhiteSpace($packageName)) { continue }
+
+        if (Test-ScoopInstalled -PackageName $packageName) {
+            Update-ScoopPackage -PackageName $packageName | Out-Null
+        }
+        else {
+            Write-Status -Manager "scoop" -Package $packageName -Status "Skipped" -Details "not installed"
+            $script:Summary.Skipped += "scoop: $packageName (not installed)"
+        }
+    }
 }
 
-# Process Chocolatey packages
-if ($processChoco -and $json.installSource.choco.autoInstall -eq $true) {
-	# Check if Chocolatey is installed
-	if (Get-Command choco -ErrorAction SilentlyContinue) {
-		Write-ColorText "`n{ Cyan}Processing Chocolatey packages...`n"
-		$chocoPkgs = $json.installSource.choco.packageList
-		$chocoArgs = $json.installSource.choco.additionalArgs
+function Invoke-ScoopInNonAdmin {
+    param([array]$Packages)
 
-		foreach ($pkg in $chocoPkgs) {
-			$pkgName = $pkg.packageName
-			$isInstalled = Test-ChocoInstalled -PackageName $pkgName
-			if ($isInstalled) {
-				$null = Update-ChocoPackage -PackageName $pkgName -AdditionalArgs $chocoArgs
-			} else {
-				$script:updateSummary.Skipped += "choco: $pkgName (not installed)"
-				Write-ColorText "{Blue}[update] {Magenta}choco: {Yellow}(skipped) {Gray}$pkgName {DarkGray}(not installed)"
-			}
-		}
-	} else {
-		Write-ColorText "`n{Yellow}[update] {Magenta}choco: {Gray}Chocolatey is not installed. Skipping Chocolatey packages.`n"
-		$script:updateSummary.Skipped += "choco: all packages (chocolatey not installed)"
-	}
+    Write-Host "`n--- Processing Scoop Packages (spawning non-admin) ---" -ForegroundColor Cyan
+
+    $packageNames = ($Packages | Where-Object { $_.packageName } | ForEach-Object { $_.packageName }) -join ","
+
+    $tempScript = Join-Path $env:TEMP "scoop_update_$($script:Timestamp).ps1"
+
+    $scriptContent = @'
+$ErrorActionPreference = 'Continue'
+$packages = $args[0] -split ','
+
+foreach ($name in $packages) {
+    if ([string]::IsNullOrWhiteSpace($name)) { continue }
+
+    $result = scoop list $name 2>&1 | Out-String
+    $result = $result -replace "Installed apps matching.*?:`r?`n", ""
+    if ($result -notmatch [regex]::Escape($name)) {
+        Write-Host "[update] scoop: (skipped) $name - not installed" -ForegroundColor Yellow
+        continue
+    }
+
+    Write-Host "[update] scoop: ... $name" -ForegroundColor Gray
+    $output = scoop update $name 2>&1 | Out-String
+
+    if ($output -imatch 'Latest version' -or $output -imatch '\(latest version\)') {
+        Write-Host "[update] scoop: (up to date) $name" -ForegroundColor Green
+    }
+    elseif ($LASTEXITCODE -eq 0) {
+        Write-Host "[update] scoop: (success) $name" -ForegroundColor Green
+    }
+    else {
+        Write-Host "[update] scoop: (failed) $name" -ForegroundColor Red
+    }
+}
+Write-Host "`nPress any key to close..." -ForegroundColor Gray
+$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+'@
+
+    $scriptContent | Out-File $tempScript -Encoding utf8
+
+    try {
+        Start-Process -FilePath "runas" -ArgumentList "/trustlevel:0x20000 `"pwsh -NoProfile -ExecutionPolicy Bypass -File `"$tempScript`" `"$packageNames`"`"" -Wait
+
+        $script:Summary.Updated += "scoop: packages processed in non-admin context"
+    }
+    catch {
+        Write-Host "Failed to spawn non-admin process for Scoop: $_" -ForegroundColor Red
+        $script:Summary.Failed += "scoop: failed to spawn non-admin process"
+    }
+    finally {
+        Start-Sleep -Seconds 1
+        Remove-Item $tempScript -Force -ErrorAction SilentlyContinue
+    }
 }
 
-# Process Scoop packages
-if ($processScoop -and $json.installSource.scoop.autoInstall -eq $true) {
-	# Check if Scoop is installed
-	if (Get-Command scoop -ErrorAction SilentlyContinue) {
-		Write-ColorText "`n{ Cyan}Processing Scoop packages...`n"
-		$scoopPkgs = $json.installSource.scoop.packageList
-		$scoopArgs = $json.installSource.scoop.additionalArgs
+function Invoke-ElevatedUpdate {
+    param(
+        [bool]$ProcessWinget,
+        [bool]$ProcessChoco
+    )
 
-		foreach ($pkg in $scoopPkgs) {
-			$pkgName = $pkg.packageName
-			$isInstalled = Test-ScoopInstalled -PackageName $pkgName
-			if ($isInstalled) {
-				$null = Update-ScoopPackage -PackageName $pkgName -AdditionalArgs $scoopArgs
-			} else {
-				$script:updateSummary.Skipped += "scoop: $pkgName (not installed)"
-			}
-		}
-	} else {
-		Write-ColorText "`n{Yellow}[update] {Magenta}scoop: {Gray}Scoop is not installed. Skipping Scoop packages.`n"
-		$script:updateSummary.Skipped += "scoop: all packages (scoop not installed)"
-	}
+    $managers = @()
+    if ($ProcessWinget) { $managers += "-Winget" }
+    if ($ProcessChoco) { $managers += "-Choco" }
+
+    if ($managers.Count -eq 0) { return }
+
+    $scriptPath = Join-Path $script:ScriptRoot "updateApps.ps1"
+    $arguments = $managers -join " "
+
+    Write-Host "`nElevating to admin for Winget/Choco updates..." -ForegroundColor Yellow
+
+    try {
+        Start-Process -FilePath "pwsh" `
+            -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$scriptPath`"", $arguments `
+            -Verb RunAs -Wait
+    }
+    catch {
+        Write-Host "Failed to elevate: $_" -ForegroundColor Red
+        $script:Summary.Failed += "elevation: failed to run as admin"
+    }
 }
 
-# Finalize logs
-"`n========================================`n" | Out-File $successLog -Append -Encoding utf8
-"Update Completed: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')`n" | Out-File $successLog -Append -Encoding utf8
-"========================================`n" | Out-File $successLog -Append -Encoding utf8
+#endregion
 
-"`n========================================`n" | Out-File $errorLog -Append -Encoding utf8
-"Update Completed: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')`n" | Out-File $errorLog -Append -Encoding utf8
-"========================================`n" | Out-File $errorLog -Append -Encoding utf8
+#region Display Functions
 
-# Display minimal summary
-Write-ColorText "`n{ Cyan}========================================`n"
-Write-ColorText "{ Cyan}Update Summary`n"
-Write-ColorText "{ Cyan}========================================`n"
+function Show-Summary {
+    $footer = "`n========================================`nUpdate Completed: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')`n========================================"
+    Write-Log -Message $footer -Type Success
+    Write-Log -Message $footer -Type Error
 
-$updatedCount = $script:updateSummary.Updated.Count
-$failedCount = $script:updateSummary.Failed.Count
-$skippedCount = $script:updateSummary.Skipped.Count
+    Write-Host "`n========================================" -ForegroundColor Cyan
+    Write-Host "Update Summary" -ForegroundColor Cyan
+    Write-Host "========================================" -ForegroundColor Cyan
 
-Write-ColorText "{Green}✅ Updated: $updatedCount"
-Write-ColorText "{Red}❌ Failed: $failedCount"
-Write-ColorText "{Yellow}⏭️  Skipped: $skippedCount"
+    $updatedCount = $script:Summary.Updated.Count
+    $failedCount = $script:Summary.Failed.Count
+    $skippedCount = $script:Summary.Skipped.Count
 
-# Show skipped packages if any
-if ($skippedCount -gt 0 -and $script:updateSummary.Skipped.Count -le 20) {
-	Write-ColorText "`n{Yellow}Skipped packages:`n"
-	$script:updateSummary.Skipped | ForEach-Object {
-		Write-ColorText "{Gray}  • $_"
-	}
-} elseif ($skippedCount -gt 20) {
-	Write-ColorText "`n{Yellow}Skipped packages: {Gray}(showing first 20 of $skippedCount)`n"
-	$script:updateSummary.Skipped | Select-Object -First 20 | ForEach-Object {
-		Write-ColorText "{Gray}  • $_"
-	}
+    Write-Host "Updated: $updatedCount" -ForegroundColor Green
+    Write-Host "Failed:  $failedCount" -ForegroundColor Red
+    Write-Host "Skipped: $skippedCount" -ForegroundColor Yellow
+
+    if ($skippedCount -gt 0 -and $skippedCount -le 20) {
+        Write-Host "`nSkipped packages:" -ForegroundColor Yellow
+        $script:Summary.Skipped | ForEach-Object {
+            Write-Host "  - $_" -ForegroundColor Gray
+        }
+    }
+
+    Write-Host "`nLogs:" -ForegroundColor Cyan
+    Write-Host "  Success: $($script:SuccessLog)" -ForegroundColor Gray
+    Write-Host "  Errors:  $($script:ErrorLog)" -ForegroundColor Gray
+    Write-Host "========================================`n" -ForegroundColor Cyan
 }
 
-Write-ColorText "`n{ Cyan}Logs:`n"
-Write-ColorText "{Gray}  Success: {Cyan}$successLog"
-Write-ColorText "{Gray}  Errors: {Cyan}$errorLog"
+#endregion
 
-Write-ColorText "`n{ Cyan}========================================`n"
+#region Main Execution
 
-# Exit with error code if any failures occurred
-if ($failedCount -gt 0) {
-	exit 1
-} else {
-	exit 0
+$noSwitchSpecified = -not ($Scoop -or $Winget -or $Choco -or $All)
+$processAll = $All -or $noSwitchSpecified
+$processWinget = $processAll -or $Winget
+$processChoco = $processAll -or $Choco
+$processScoop = $processAll -or $Scoop
+
+Initialize-Logging
+Write-Host "`nStarting application updates..." -ForegroundColor Green
+
+$appList = Get-AppList
+$wingetPackages = $appList.installSource.winget.packageList
+$chocoPackages = $appList.installSource.choco.packageList
+$scoopPackages = $appList.installSource.scoop.packageList
+
+$isAdmin = Test-Administrator
+
+if ($isAdmin) {
+    Write-Host "Running as Administrator" -ForegroundColor Cyan
+
+    if ($processWinget -and $appList.installSource.winget.autoInstall) {
+        Invoke-WingetUpdates -Packages $wingetPackages
+    }
+
+    if ($processChoco -and $appList.installSource.choco.autoInstall) {
+        Invoke-ChocoUpdates -Packages $chocoPackages
+    }
+
+    if ($processScoop -and $appList.installSource.scoop.autoInstall) {
+        Invoke-ScoopInNonAdmin -Packages $scoopPackages
+    }
+}
+else {
+    Write-Host "Running as Non-Administrator" -ForegroundColor Cyan
+
+    if ($processScoop -and $appList.installSource.scoop.autoInstall) {
+        Invoke-ScoopUpdates -Packages $scoopPackages
+    }
+
+    $needsElevation = ($processWinget -and $appList.installSource.winget.autoInstall) -or
+                      ($processChoco -and $appList.installSource.choco.autoInstall)
+
+    if ($needsElevation) {
+        Invoke-ElevatedUpdate -ProcessWinget ($processWinget -and $appList.installSource.winget.autoInstall) `
+                              -ProcessChoco ($processChoco -and $appList.installSource.choco.autoInstall)
+    }
 }
 
+Show-Summary
+
+$exitCode = if ($script:Summary.Failed.Count -gt 0) { 1 } else { 0 }
+exit $exitCode
+
+#endregion
