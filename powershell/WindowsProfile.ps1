@@ -1102,4 +1102,4 @@ if (Test-Path "$PSScriptRoot\CTTcustom.ps1") {
     Invoke-Expression -Command "& `"$PSScriptRoot\CTTcustom.ps1`""
 }
 
-Write-Host "Use 'Show-Help' to display help" -ForegroundColor Yellow
+Write-Host "`nUse 'Show-Help' to display help" -ForegroundColor Yellow
