@@ -24,7 +24,8 @@
 				// Must-haves
 				{ "packageId": "Microsoft.PowerShell" },
 				{ "packageId": "Microsoft.WindowsTerminal.Preview" },
-				{ "packageId": " Zen-Team.Zen-Browser" },
+				{ "packageId": "Zen-Team.Zen-Browser" },
+
 
 				// Shell supports
 				{ "packageId": "chrisant996.Clink" },
@@ -46,6 +47,9 @@
 				{ "packageId": "JetBrains.IntelliJIDEA.Community" },
 				{ "packageId": "Microsoft.VisualStudioCode" },
 				// { "packageId": "Notepad++.Notepad++" }, // Issues with glazewm - Flickers when there are multiple monitors
+				{ "packageId": "ZedIndustries.Zed" },
+				//{ "packageId": "KDE.Kate" },
+				{ "packageId": "Microsoft.Edit" },
 				{ "packageId": "Obsidian.Obsidian" },
 				{ "packageId": "LoftLabs.DevPod" }, // Client-Only Codespaces
 
@@ -141,7 +145,7 @@
 				//{ "packageName": "spotify-tui" },
 				{ "packageName": "starship" },
 				{ "packageName": "neovim" },
-
+				{ "packageName": "wezterm" },
 				{ "packageName": "wget" },
 				{ "packageName": "yazi" },
 				{ "packageName": "yq" },
