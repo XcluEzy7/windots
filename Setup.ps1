@@ -2095,30 +2095,31 @@ if (Should-RunSection "Komorebi") {
 	}
 
 	# komorebi
-	if (Get-Command komorebic -ErrorAction SilentlyContinue) {
-		$komorebiRunning = Get-Process -Name komorebi -ErrorAction SilentlyContinue
-		if ($Force -or !$komorebiRunning) {
-			if ($Force -and $komorebiRunning) {
-				Write-ColorText "{Yellow}Force mode: Restarting Komorebi..."
-				& komorebic.exe stop 2>&1 | Out-Null
-				Start-Sleep -Seconds 1
-			}
-			$whkdExists = Get-Command whkd -ErrorAction SilentlyContinue
-			$whkdProcess = Get-Process -Name whkd -ErrorAction SilentlyContinue
-			Write-Host "Starting Komorebi in the background..."
-			if ($whkdExists -and (!$whkdProcess)) {
-				try { Start-Process "powershell.exe" -ArgumentList "komorebic.exe", "start", "--whkd" -WindowStyle Hidden }
-				catch { Write-Error "$_" }
-			} else {
-				try { Start-Process "powershell.exe" -ArgumentList "komorebic.exe", "start" -WindowStyle Hidden }
-				catch { Write-Error "$_" }
-			}
-		} else {
-			Write-Host "✅ Komorebi Tiling Window Management is already running."
-		}
-	} else {
-		Write-Warning "Command not found: komorebic."
-	}
+	# Auto-start disabled to allow user choice of WM (e.g. GlazeWM)
+	# if (Get-Command komorebic -ErrorAction SilentlyContinue) {
+	# 	$komorebiRunning = Get-Process -Name komorebi -ErrorAction SilentlyContinue
+	# 	if ($Force -or !$komorebiRunning) {
+	# 		if ($Force -and $komorebiRunning) {
+	# 			Write-ColorText "{Yellow}Force mode: Restarting Komorebi..."
+	# 			& komorebic.exe stop 2>&1 | Out-Null
+	# 			Start-Sleep -Seconds 1
+	# 		}
+	# 		$whkdExists = Get-Command whkd -ErrorAction SilentlyContinue
+	# 		$whkdProcess = Get-Process -Name whkd -ErrorAction SilentlyContinue
+	# 		Write-Host "Starting Komorebi in the background..."
+	# 		if ($whkdExists -and (!$whkdProcess)) {
+	# 			try { Start-Process "powershell.exe" -ArgumentList "komorebic.exe", "start", "--whkd" -WindowStyle Hidden }
+	# 			catch { Write-Error "$_" }
+	# 		} else {
+	# 			try { Start-Process "powershell.exe" -ArgumentList "komorebic.exe", "start" -WindowStyle Hidden }
+	# 			catch { Write-Error "$_" }
+	# 		}
+	# 	} else {
+	# 		Write-Host "✅ Komorebi Tiling Window Management is already running."
+	# 	}
+	# } else {
+	# 	Write-Warning "Command not found: komorebic."
+	# }
 }
 
 
