@@ -34,29 +34,118 @@ config.hide_tab_bar_if_only_one_tab = true
 config.tab_bar_at_bottom = true
 
 -- Keys
+-- GlazeWM uses Alt and Alt+Shift heavily.
+-- WezTerm will use Ctrl+Shift to avoid conflicts.
 config.keys = {
-  -- Turn off default Alt-Enter fullscreen to avoid conflicts
+  -- Disable Alt-Enter fullscreen to let GlazeWM handle window states
   {
     key = 'Enter',
     mods = 'ALT',
     action = act.DisableDefaultAssignment,
   },
-  -- Ctrl+Shift+T to open new tab (standard)
+  
+  -- Tab Management (Ctrl+Shift)
   {
     key = 't',
     mods = 'CTRL|SHIFT',
     action = act.SpawnTab 'CurrentPaneDomain',
   },
-  -- Ctrl+Shift+W to close tab
   {
     key = 'w',
     mods = 'CTRL|SHIFT',
     action = act.CloseCurrentTab{ confirm = true },
   },
+  -- Ctrl+Tab (Standard)
+  {
+    key = 'Tab',
+    mods = 'CTRL',
+    action = act.ActivateTabRelative(1),
+  },
+  {
+    key = 'Tab',
+    mods = 'CTRL|SHIFT',
+    action = act.ActivateTabRelative(-1),
+  },
+  -- Ctrl+Shift+[ and Ctrl+Shift+]
+  -- Note: Shift+[ produces {, so we bind to {
+  {
+    key = '{',
+    mods = 'CTRL|SHIFT',
+    action = act.ActivateTabRelative(-1),
+  },
+  {
+    key = '}',
+    mods = 'CTRL|SHIFT',
+    action = act.ActivateTabRelative(1),
+  },
+
+  -- Pane Management (Split)
+  -- Using " and % (Visual similarity to horizontal/vertical lines)
+  -- Note: Shift+' produces " and Shift+5 produces %
+  {
+    key = '"',
+    mods = 'CTRL|SHIFT',
+    action = act.SplitVertical{ domain =  'CurrentPaneDomain' },
+  },
+  {
+    key = '%',
+    mods = 'CTRL|SHIFT',
+    action = act.SplitHorizontal{ domain =  'CurrentPaneDomain' },
+  },
+  
+  -- Pane Navigation
+  {
+    key = 'LeftArrow',
+    mods = 'CTRL|SHIFT',
+    action = act.ActivatePaneDirection 'Left',
+  },
+  {
+    key = 'RightArrow',
+    mods = 'CTRL|SHIFT',
+    action = act.ActivatePaneDirection 'Right',
+  },
+  {
+    key = 'UpArrow',
+    mods = 'CTRL|SHIFT',
+    action = act.ActivatePaneDirection 'Up',
+  },
+  {
+    key = 'DownArrow',
+    mods = 'CTRL|SHIFT',
+    action = act.ActivatePaneDirection 'Down',
+  },
+
+  -- Copy/Paste
+  {
+    key = 'c',
+    mods = 'CTRL|SHIFT',
+    action = act.CopyTo 'Clipboard',
+  },
+  {
+    key = 'v',
+    mods = 'CTRL|SHIFT',
+    action = act.PasteFrom 'Clipboard',
+  },
+  
+  -- Font Size
+  {
+    key = '+',
+    mods = 'CTRL',
+    action = act.IncreaseFontSize,
+  },
+  {
+    key = '-',
+    mods = 'CTRL',
+    action = act.DecreaseFontSize,
+  },
+  {
+    key = '0',
+    mods = 'CTRL',
+    action = act.ResetFontSize,
+  },
 }
 
--- Shell (Default to PowerShell Core if available, else Windows PowerShell)
--- Since this is a windots repo, we assume pwsh is preferred
+-- Shell
 config.default_prog = { 'pwsh.exe', '-NoLogo' }
 
 return config
