@@ -80,16 +80,17 @@ config.keys = {
   },
 
   -- Pane Management (Split)
-  -- Using " and % (Visual similarity to horizontal/vertical lines)
-  -- Note: Shift+' produces " and Shift+5 produces %
+  -- Using | and \ (Visual similarity to vertical/horizontal lines)
+  -- Aligned with Windows Terminal for consistency
+  -- Note: | requires Shift+\ on most keyboards, so we bind to the pipe character
   {
-    key = '"',
-    mods = 'CTRL|SHIFT',
+    key = '|',
+    mods = 'CTRL',
     action = act.SplitVertical{ domain =  'CurrentPaneDomain' },
   },
   {
-    key = '%',
-    mods = 'CTRL|SHIFT',
+    key = '\\',
+    mods = 'CTRL',
     action = act.SplitHorizontal{ domain =  'CurrentPaneDomain' },
   },
   
@@ -113,6 +114,13 @@ config.keys = {
     key = 'DownArrow',
     mods = 'CTRL|SHIFT',
     action = act.ActivatePaneDirection 'Down',
+  },
+  
+  -- Pane Close (Unified with Windows Terminal)
+  {
+    key = 'x',
+    mods = 'CTRL|SHIFT',
+    action = act.CloseCurrentPane{ confirm = true },
   },
 
   -- Copy/Paste

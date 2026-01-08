@@ -116,6 +116,7 @@ cd `your_location`
 <h4>🔑 YASB GitHub Token Configuration <small><i>(v0.08)</i></small></h4>
 <h4>🐧 WSL Configuration Setup with Terminal Editor Support <small><i>(v0.09)</i></small></h4>
 <h4>🔄 Application Update Management <small><i>(v0.10)</i></small></h4>
+<h4>⌨️ Terminal Shortcuts Cheatsheet Module <small><i>(v0.11)</i></small></h4>
 
 > [!IMPORTANT]
 > **PowerShell Module Installation**: PowerShell modules from the PowerShell Gallery must be installed in **PowerShell 5.1** (Windows PowerShell), not PowerShell 7.x. The `Setup.ps1` script automatically handles this by delegating module installation to PowerShell 5.1 (`powershell.exe`) even when the script itself runs in PowerShell 7.x. This ensures modules are installed in the correct location and are available to both PowerShell versions.
@@ -258,6 +259,53 @@ w11dot-setup -Updates
 - Use individual package manager switches (`-Winget`, `-Choco`, `-Scoop`) for testing or selective updates
 
 **Note**: The update process respects the `autoInstall` setting in `appList.json`. Only packages from package managers with `autoInstall: true` will be processed.
+
+</details>
+
+<details>
+<summary><b>⌨️ Terminal Shortcuts Cheatsheet Module <small><i>(v0.11)</i></small></b></summary>
+
+<br>
+
+The `TerminalHelpers.psm1` module provides comprehensive cheat sheets for terminal shortcuts with unified keybindings across Windows Terminal and WezTerm.
+
+**Usage:**
+```pwsh
+# Display WezTerm shortcuts
+wezhelp
+Show-WezTermHelp
+
+# Display Windows Terminal shortcuts
+wthelp
+Show-WTHelp
+```
+
+**Features:**
+- **Unified Shortcuts**: Common shortcuts are identical across both terminals for consistency
+- **Color-Coded Display**: Uses PowerShell native colors (Green for common, Yellow for terminal-specific)
+- **Organized Categories**: Shortcuts grouped by function (Tabs, Panes, Edit, Scrolling, etc.)
+- **Justifications**: Explains why 3-modifier-key shortcuts are used for advanced features
+- **GlazeWM Compatible**: All shortcuts use `Ctrl+Shift` to avoid conflicts with GlazeWM window manager
+- **Auto-Loaded**: Module is automatically loaded via PowerShell profiles, available globally
+
+**Shortcut Categories:**
+- **Tabs**: New/close tabs, navigation between tabs
+- **Panes**: Split (vertical/horizontal), navigation, management, advanced features
+- **Edit**: Copy/paste, find/search, mark mode
+- **Font Size**: Increase/decrease/reset font size
+- **Scrolling**: Scroll up/down, jump to top/bottom
+- **Settings**: Open settings, command palette, reload configuration
+- **Special Features**: Terminal-specific features (WezTerm: copy mode, launcher menu, etc.)
+
+**Key Design Principles:**
+- Avoid 3-modifier keys (`Ctrl+Shift+Alt`) unless justified for advanced features
+- Prefer `Ctrl + action key` or `Ctrl + Shift + action key` for common operations
+- Visual shortcuts: `Ctrl+|` for vertical split, `Ctrl+\` for horizontal split
+- Terminal-specific features clearly marked (e.g., "WT Only", "WezTerm Only")
+
+**Module Location:**
+- `dotposh/Modules/TerminalHelpers.psm1`
+- Automatically loaded via PowerShell profiles (`Profile.ps1`, `WindowsProfile.ps1`)
 
 </details>
 
@@ -429,6 +477,7 @@ Follow the below links to download and learn to how to setup:
 - \>\_ Sleek [Windows Terminal config](./config/AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json)
 - 🌈 Oh-My-Posh [minimal theme](./dotposh/posh-zen.toml)
 - 🦄 **Super fast** PowerShell startup time _(load asynchronously)_ + [custom configurations & modules](./dotposh/)
+- ⌨️ **Terminal Shortcuts Cheatsheet** - Unified shortcuts for Windows Terminal and WezTerm with `wezhelp` and `wthelp` commands
 - 🍄 Simple fastfetch configuration, which I copied from [scottmckendry's config](https://github.com/scottmckendry/Windots/tree/main/fastfetch)
 - 🥂 Many [addons](#git-addons) for Git!
 - 🐱 Use [MISE](https://mise.jdx.dev/) *(mise-en-place)* to manage [development tools](https://mise.jdx.dev/dev-tools/). Learn more about `mise` here: https://mise.jdx.dev/
