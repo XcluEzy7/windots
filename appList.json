@@ -28,7 +28,7 @@
 
 
 				// Shell supports
-				{ "packageId": "chrisant996.Clink" },
+				//{ "packageId": "chrisant996.Clink" },
 				{ "packageId": "gerardog.gsudo" },
 				{ "packageId": "JanDeDobbeleer.OhMyPosh" },
 
