@@ -39,7 +39,7 @@
 				//{ "packageId": "PostgreSQL.PostgreSQL" },
 
 				// Development Tools
-				{ "packageId": "ImageMagick.ImageMagick" },
+				//{ "packageId": "ImageMagick.ImageMagick" },
 				//{ "packageId": "Postman.Postman" },
 				//{ "packageId": "9NTRNFT9ZWS2" }, // LocalStack Desktop
 
@@ -115,6 +115,8 @@
 				{ "packageName": "sharex" },
 				{ "packageName": "cursor" },
 				{ "packageName": "glazewm" },
+				{ "packageName": "googlechrome" },
+				{ "packageName": "antigravity" }
 
 				// Git helpers
 				{ "packageName": "bfg" },
@@ -154,17 +156,18 @@
 				// Development tools management (e.g: NodeJS, Java,...)
 				{ "packageName": "mise" },
 				// { "packageName": "vfox" },
-				{ "packageName": "pnpm" },
+				//{ "packageName": "pnpm" },
+				{ "packageName": "bun" },
 				{ "packageName": "uv" },
 				//{ "packageName": "nodejs-lts" },
-				{ "packageName": "nvm" },
+				//{ "packageName": "nvm" },
 
 				// CI/CD tools
 				//{ "packageName": "aws" },
 				{ "packageName": "restic" },
 				{ "packageName": "task" },
 				{ "packageName": "trivy" },
-				{ "packageName": "kubectl" },
+				//{ "packageName": "kubectl" },
 				{ "packageName": "opentofu" },
 				{ "packageName": "microk8s" },
 				{ "packageName": "pskubectlcompletion" },
@@ -225,9 +228,9 @@
 			"install": false
 		},
 		{
-			"commandName": "npm",
-			"commandCheck": "npm list -g --depth=0",
-			"commandInvoke": "npm install -g",
+			"commandName": "bun",
+			"commandCheck": "bun list -g --depth=0",
+			"commandInvoke": "bun install -g",
 			"addonList": [
 				"commitizen",
 				"cz-conventional-changelog"

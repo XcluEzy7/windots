@@ -76,11 +76,11 @@
         },
         {
             "id": "User.splitPane.vertical",
-            "keys": "ctrl+|"
+            "keys": "ctrl+shift+oem_5"
         },
         {
             "id": "User.splitPane.horizontal",
-            "keys": "ctrl+\\"
+            "keys": "ctrl+oem_5"
         },
         {
             "id": "User.splitPane.duplicate",
@@ -144,6 +144,7 @@
             {
                 "guid": "{2ece5bfe-50ed-5f3a-ab87-5cd4baafed2b}",
                 "hidden": false,
+                "icon": "none",
                 "name": "Git Bash",
                 "source": "Git"
             },
@@ -156,84 +157,98 @@
             {
                 "guid": "{e02ab78d-e8d3-5e6f-9075-d84d07af3a3c}",
                 "hidden": false,
+                "icon": "none",
                 "name": "Ubuntu",
                 "source": "Microsoft.WSL"
             },
             {
                 "guid": "{9fa359d9-7a1e-580e-891f-bb85fc73235b}",
                 "hidden": false,
+                "icon": "none",
                 "name": "CentOS9-stream",
                 "source": "Microsoft.WSL"
             },
             {
                 "guid": "{c56c9b7c-2fdc-5ede-b57d-da8e81b6aadf}",
                 "hidden": false,
+                "icon": "none",
                 "name": "Arch",
                 "source": "Microsoft.WSL"
             },
             {
                 "guid": "{035f9ede-5629-5324-8466-f1b8e420fc68}",
                 "hidden": false,
+                "icon": "none",
                 "name": "Ubuntu",
                 "source": "Microsoft.WSL"
             },
             {
                 "guid": "{14bcea03-ed07-5ac7-97c4-6edea9136edb}",
                 "hidden": false,
+                "icon": "none",
                 "name": "Ubuntu",
                 "source": "Microsoft.WSL"
             },
             {
                 "guid": "{5abbce0a-d225-5773-b744-e4cdaf4e62e1}",
                 "hidden": false,
+                "icon": "none",
                 "name": "CentOS9-stream",
                 "source": "Microsoft.WSL"
             },
             {
                 "guid": "{3d86217d-f69d-5766-aab4-6f291a3062a4}",
                 "hidden": false,
+                "icon": "none",
                 "name": "Ubuntu-24.04",
                 "source": "Microsoft.WSL"
             },
             {
                 "guid": "{aaceb2da-a60f-5645-b5c3-bf9db1b6a8af}",
                 "hidden": false,
+                "icon": "none",
                 "name": "Ubuntu",
                 "source": "Microsoft.WSL"
             },
             {
                 "guid": "{337f020e-6229-56a1-bb89-fc140cabf7cc}",
                 "hidden": false,
+                "icon": "none",
                 "name": "Ubuntu",
                 "source": "Microsoft.WSL"
             },
             {
                 "guid": "{4b774d4d-0781-570f-8d13-30f64775ffe5}",
                 "hidden": false,
+                "icon": "none",
                 "name": "Debian",
                 "source": "Microsoft.WSL"
             },
             {
                 "guid": "{05530be3-a2be-59f3-915a-9726067453e6}",
                 "hidden": false,
+                "icon": "none",
                 "name": "Ubuntu",
                 "source": "Microsoft.WSL"
             },
             {
                 "guid": "{d6d2a6ed-81f3-5736-a67d-e075811cb7f9}",
                 "hidden": false,
+                "icon": "none",
                 "name": "Ubuntu",
                 "source": "Microsoft.WSL"
             },
             {
                 "guid": "{e636d57d-dd20-5a70-8ea6-d0ef336c62e7}",
                 "hidden": false,
+                "icon": "none",
                 "name": "Ubuntu",
                 "source": "Microsoft.WSL"
             },
             {
                 "guid": "{803cdcd2-ccb4-5c79-b0a8-42d65d631914}",
                 "hidden": false,
+                "icon": "none",
                 "name": "Ubuntu",
                 "source": "Microsoft.WSL"
             }
@@ -950,6 +965,20 @@
             "tabRow": 
             {
                 "background": "#181825FF",
+                "unfocusedBackground": "#11111BFF"
+            },
+            "window": 
+            {
+                "applicationTheme": "dark",
+                "experimental.rainbowFrame": false,
+                "frame": null,
+                "unfocusedFrame": null,
+                "useMica": true
+            }
+        }
+    ],
+    "warning.confirmCloseAllTabs": false
+}                "background": "#181825FF",
                 "unfocusedBackground": "#11111BFF"
             },
             "window": 

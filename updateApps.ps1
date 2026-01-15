@@ -54,19 +54,19 @@ if (-not $script:CurrentShell) {
 # --- ORCHESTRATOR LOGIC (Split Pane) ---
 # Only run orchestration if no specific target is set, AND not in Check mode, AND not selecting specific managers
 if (-not $Target -and -not $Check -and -not ($Scoop -or $Winget -or $Choco)) {
-    
+
     # We want to run System (Winget+Choco) and User (Scoop) in parallel split panes.
     # Logic:
     # 1. Detect Terminal (WT or WezTerm).
     # 2. Launch Split View calling this script with -Target System and -Target User.
-    
+
     $scriptPath = $MyInvocation.MyCommand.Path
-    
+
     # Command to run this script in a specific target mode
     # We use -NoExit so the pane stays open for review if it fails, or we handle pause internally
     # actually better to handle pause internally.
     $cmdSystem = "`"$script:CurrentShell`" -NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`" -Target System"
-    $cmdUser   = "`"$script:CurrentShell`" -NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`" -Target User"
+    $cmdUser = "`"$script:CurrentShell`" -NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`" -Target User"
 
     # CASE A: Windows Terminal
     if ($env:WT_SESSION) {
@@ -76,29 +76,29 @@ if (-not $Target -and -not $Check -and -not ($Scoop -or $Winget -or $Choco)) {
         # Note: We need to launch the NEW pane first, then replace the CURRENT pane or run in current.
         # Actually simpler: Launch a whole new layout in the current tab?
         # wt split-pane -V command ; move-focus left ; command
-        
-        # Approach: 
+
+        # Approach:
         # 1. Run 'wt -w 0 split-pane -V $cmdUser' (Opens right pane with User)
         # 2. Run '$cmdSystem' in current process (Left pane)
-        
+
         Start-Process "wt.exe" -ArgumentList "-w", "0", "split-pane", "-V", "pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$scriptPath`"", "-Target", "User"
-        
+
         # Run System in current pane
         & $script:CurrentShell -NoProfile -ExecutionPolicy Bypass -File "$scriptPath" -Target System
         exit
     }
-    
+
     # CASE B: WezTerm
     elseif ($env:WEZTERM_PANE) {
         Write-Host "Detected WezTerm. Splitting panes..." -ForegroundColor Cyan
         # Split right
         # wezterm cli split-pane --right -- percent 50 -- program...
-        
+
         # Launch User (Right)
         $argsUser = @("cli", "split-pane", "--right", "--percent", "50", "--")
         if ($script:CurrentShell -match "pwsh") { $argsUser += "pwsh" } else { $argsUser += "powershell" }
         $argsUser += @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "$scriptPath", "-Target", "User")
-        
+
         Start-Process "wezterm" -ArgumentList $argsUser -Wait
 
         # Run System in current pane (Left)
@@ -113,15 +113,14 @@ if (-not $Target -and -not $Check -and -not ($Scoop -or $Winget -or $Choco)) {
             # Launch new window with 2 panes
             # wt -w new pwsh ... -Target System ; split-pane -V pwsh ... -Target User
             $argList = "-w new pwsh -NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`" -Target System `; split-pane -V pwsh -NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`" -Target User"
-            
+
             # Need to be careful with semicolon parsing in PowerShell Start-Process args
             # We pass the whole string to cmd /c or similar, or just try direct wt syntax
             # The semicolon is a WT delimiter.
-            
+
             Start-Process "wt.exe" -ArgumentList $argList
             exit
-        }
-        else {
+        } else {
             Write-Host "Windows Terminal not found. Running sequentially." -ForegroundColor Yellow
             # Fallthrough to normal sequential run (Target = null)
         }
@@ -148,6 +147,10 @@ function Test-Administrator {
     return $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
+function Test-GsudoAvailable {
+    return Get-Command gsudo -ErrorAction SilentlyContinue
+}
+
 function Initialize-Logging {
     if (!(Test-Path $script:LogDir)) {
         New-Item -ItemType Directory -Path $script:LogDir -Force | Out-Null
@@ -165,7 +168,7 @@ function Select-UpdatesWithGum {
     gum style --foreground 212 --border-foreground 212 --border double --align center --width 50 --margin "1 1" --padding "0 2" "SELECT UPDATES TO INSTALL" "Type to Filter | Space: Toggle | Enter: Confirm"
 
     # Format for Gum: "Manager  | Name                      | Version Upgrade"
-    # We map back by index or strict string matching to avoid showing ugly IDs if possible, 
+    # We map back by index or strict string matching to avoid showing ugly IDs if possible,
     # but ID is safest. We'll make it subtle.
     $gumList = $Updates | ForEach-Object {
         $verStr = "$($_.Current) -> $($_.Available)"
@@ -209,7 +212,7 @@ function Get-PendingUpdates {
             # We will use a regex strategy on the table output.
             $output = winget list --upgrade-available 2>&1 | Out-String
             $lines = $output -split "`r?`n"
-            
+
             # Skip header lines until we find the separator (usually starts with Name or Id, followed by ----)
             $startParsing = $false
             foreach ($line in $lines) {
@@ -217,14 +220,14 @@ function Get-PendingUpdates {
                 if (!$startParsing -or [string]::IsNullOrWhiteSpace($line)) { continue }
 
                 # Winget columns are fixed width-ish but dynamic.
-                # Strategy: Split by multiple spaces. 
+                # Strategy: Split by multiple spaces.
                 # Name | Id | Version | Available | Source
                 $parts = $line -split '\s{2,}'
                 if ($parts.Count -ge 4) {
                     $id = $parts[1]
                     $current = $parts[2]
                     $avail = $parts[3]
-                    
+
                     # Filter against our appList.json
                     if ($WingetList.packageId -contains $id) {
                         $updates += [PSCustomObject]@{
@@ -276,7 +279,7 @@ function Get-PendingUpdates {
             # Name    Current Version  Latest Version  Missing Dependencies
             # ----    ---------------  --------------  --------------------
             # app1    1.0              1.1
-            
+
             $output = scoop status 2>&1 | Out-String
             $lines = $output -split "`r?`n"
             $startParsing = $false
@@ -291,10 +294,10 @@ function Get-PendingUpdates {
                     $current = $parts[1]
                     $avail = $parts[2]
 
-                    # Scoop status lists ALL outdated scoop apps. 
+                    # Scoop status lists ALL outdated scoop apps.
                     # We check if it's in our managed list.
                     if ($ScoopList.packageName -contains $name) {
-                         $updates += [PSCustomObject]@{
+                        $updates += [PSCustomObject]@{
                             Manager   = "Scoop"
                             Name      = $name
                             Id        = $name
@@ -322,7 +325,7 @@ function Write-Log {
 
 function Get-ShortError {
     param([string]$Output)
-    
+
     if ([string]::IsNullOrWhiteSpace($Output)) { return "Unknown error" }
 
     # Common patterns
@@ -368,25 +371,25 @@ function Write-Status {
         # Gum Styling
         $statusColor = switch ($Status) {
             'Updating' { "240" } # Gray
-            'Success'  { "2" }   # Green
-            'UpToDate' { "2" }   # Green
-            'Skipped'  { "3" }   # Yellow
-            'Failed'   { "1" }   # Red
-            'Error'    { "1" }   # Red
+            'Success' { "2" }   # Green
+            'Current' { "2" }   # Green
+            'Skipped' { "3" }   # Yellow
+            'Failed' { "1" }   # Red
+            'Error' { "1" }   # Red
         }
-        
+
         $statusText = switch ($Status) {
             'UpToDate' { "CURRENT" }
             default { $Status.ToUpper() }
         }
-        
+
         # [ MANAGER ]
         $p1 = gum style --foreground 5 --width 10 --align center --bold "[$Manager]"
         # Package
         $p2 = gum style --foreground 245 --width 35 "$Package"
         # [ STATUS ]
         $p3 = gum style --foreground 255 --background $statusColor --padding "0 1" "$statusText"
-        
+
         # Details (only for failed/skipped, not for success/current)
         $p4 = ""
         if ($Status -in "Failed", "Error", "Skipped") {
@@ -395,8 +398,7 @@ function Write-Status {
         }
 
         Write-Host "$p1 $p2 $p3 $p4"
-    }
-    else {
+    } else {
         # Fallback Legacy Styling
         $colors = @{
             Updating = "Gray"
@@ -410,7 +412,7 @@ function Write-Status {
         $symbols = @{
             Updating = "..."
             Success  = "(success)"
-            UpToDate = "(up to date)"
+            UpToDate = "(current)"
             Skipped  = "(skipped)"
             Failed   = "(failed)"
             Error    = "(error)"
@@ -455,8 +457,7 @@ function Get-AppList {
 
     try {
         return $jsonContent | ConvertFrom-Json
-    }
-    catch {
+    } catch {
         Write-Host "Error parsing appList.json: $_" -ForegroundColor Red
         exit 1
     }
@@ -471,26 +472,23 @@ function Refresh-ScoopBuckets {
 
     if (Test-Administrator) {
         if (Get-Command gum -ErrorAction SilentlyContinue) {
-             gum style --foreground 212 "Refreshing Scoop buckets (De-elevating)..."
+            gum style --foreground 212 "Refreshing Scoop buckets (De-elevating)..."
         } else {
-             Write-Host "`nRefreshing Scoop buckets..." -ForegroundColor Cyan
+            Write-Host "`nRefreshing Scoop buckets..." -ForegroundColor Cyan
         }
 
         # De-elevate to run scoop update to avoid warnings and ensure user scope
         $tempScript = Join-Path $env:TEMP "scoop_refresh_$($script:Timestamp).ps1"
         "scoop update" | Out-File $tempScript -Encoding utf8
-        
+
         try {
             Start-Process -FilePath "runas" -ArgumentList "/trustlevel:0x20000 `"$script:CurrentShell -NoProfile -ExecutionPolicy Bypass -File `\"$tempScript`\"`"" -Wait
-        }
-        catch {
+        } catch {
             Write-Host "Warning: Failed to refresh Scoop buckets (elevation issue): $_" -ForegroundColor Yellow
-        }
-        finally {
+        } finally {
             Remove-Item $tempScript -Force -ErrorAction SilentlyContinue
         }
-    }
-    else {
+    } else {
         # Run directly
         try {
             if (Get-Command gum -ErrorAction SilentlyContinue) {
@@ -500,8 +498,7 @@ function Refresh-ScoopBuckets {
                 Write-Host "`nRefreshing Scoop buckets..." -ForegroundColor Cyan
                 scoop update | Out-Null
             }
-        }
-        catch {
+        } catch {
             Write-Host "Warning: Failed to refresh Scoop buckets: $_" -ForegroundColor Yellow
         }
     }
@@ -535,8 +532,7 @@ function Test-ScoopInstalled {
         $scoopGlobalDir = if ($env:SCOOP_GLOBAL) { $env:SCOOP_GLOBAL } else { "C:\ProgramData\scoop" }
         $appPath = Join-Path $scoopGlobalDir "apps\$PackageName"
         return (Test-Path $appPath)
-    }
-    else {
+    } else {
         $scoopDir = if ($env:SCOOP) { $env:SCOOP } else { Join-Path $env:USERPROFILE "scoop" }
         $appPath = Join-Path $scoopDir "apps\$PackageName"
         return (Test-Path $appPath)
@@ -545,25 +541,35 @@ function Test-ScoopInstalled {
 
 function Update-WingetPackage {
     param([string]$PackageId)
-    
+
     # Using gum spin to hide the operation, so we don't print "Updating" beforehand
     if (!(Get-Command gum -ErrorAction SilentlyContinue)) {
         Write-Status -Manager "winget" -Package $PackageId -Status "Updating"
     }
 
+    $isAdmin = Test-Administrator
+    $gsudoAvail = Test-GsudoAvailable
+    $useGsudo = (!$isAdmin -and $gsudoAvail)
+
     try {
         $output = ""
         $exitCode = 0
-        
+
+        $cmdStr = if ($useGsudo) {
+            "gsudo winget upgrade --id $PackageId --silent --accept-package-agreements --accept-source-agreements"
+        } else {
+            "winget upgrade --id $PackageId --silent --accept-package-agreements --accept-source-agreements"
+        }
+
         if (Get-Command gum -ErrorAction SilentlyContinue) {
             $tempFile = [System.IO.Path]::GetTempFileName()
             # Wrap in spinner, capturing output to temp file
-            gum spin --spinner dot --title "Winget: $PackageId" -- pwsh -c "winget upgrade --id $PackageId --silent --accept-package-agreements --accept-source-agreements > `"$tempFile`" 2>&1"
+            gum spin --spinner dot --title "Winget: $PackageId" -- pwsh -c "$cmdStr > `"$tempFile`" 2>&1"
             $output = Get-Content $tempFile -Raw
             $exitCode = $LASTEXITCODE # This captures pwsh exit code, which captures winget's
             Remove-Item $tempFile -Force -ErrorAction SilentlyContinue
         } else {
-            $output = winget upgrade --id $PackageId --silent --accept-package-agreements --accept-source-agreements 2>&1 | Out-String
+            $output = Invoke-Expression "$cmdStr 2>&1" | Out-String
             $exitCode = $LASTEXITCODE
         }
 
@@ -571,7 +577,7 @@ function Update-WingetPackage {
 
         if ($exitCode -eq 0 -or $isUpToDate) {
             if ($isUpToDate) {
-                Write-Status -Manager "winget" -Package $PackageId -Status "Current"
+                Write-Status -Manager "winget" -Package $PackageId -Status "UpToDate"
                 $script:Summary.Updated += "winget: $PackageId (current)"
             } else {
                 Write-Status -Manager "winget" -Package $PackageId -Status "Success"
@@ -620,7 +626,7 @@ function Update-ChocoPackage {
 
         if ($exitCode -eq 0) {
             if ($isUpToDate) {
-                Write-Status -Manager "choco" -Package $PackageName -Status "Current"
+                Write-Status -Manager "choco" -Package $PackageName -Status "UpToDate"
                 $script:Summary.Updated += "choco: $PackageName (current)"
             } else {
                 Write-Status -Manager "choco" -Package $PackageName -Status "Success"
@@ -653,7 +659,7 @@ function Invoke-WingetUpdates {
         Write-Host "`nWinget is not installed. Skipping." -ForegroundColor Yellow
         return
     }
-    
+
     if (Get-Command gum -ErrorAction SilentlyContinue) {
         gum style --border normal --margin "1 0" --padding "0 1" --border-foreground 212 "WINGET PACKAGES"
     } else {
@@ -716,7 +722,7 @@ function Update-ScoopPackage {
             param($name, $g, $out)
             $argsList = @("update", $name)
             if ($g) { $argsList += "--global" }
-            
+
             # Run scoop and capture output
             $res = & scoop @argsList 2>&1 | Out-String
             $res | Out-File $out -Encoding utf8
@@ -728,12 +734,12 @@ function Update-ScoopPackage {
             $shimScript = Join-Path $env:TEMP "scoop_shim_$($PackageName).ps1"
             # Script content: Run scoop update and redirect output to the temp file we are watching
             # Note: We can't easily write to the parent's $tempOutput from a runas child (permissions).
-            # So we let the child write to its own temp, then copy/read it? 
+            # So we let the child write to its own temp, then copy/read it?
             # Simpler: The child prints to stdout, we capture that? runas doesn't stream stdout well.
             # We will tell the child to write to a temp file that EVERYONE can read.
-            
+
             $childTemp = [System.IO.Path]::GetTempFileName()
-            
+
             $scriptContent = "scoop update $PackageName | Out-File '$childTemp' -Encoding utf8; exit `$LASTEXITCODE"
             $scriptContent | Out-File $shimScript -Encoding utf8
 
@@ -753,17 +759,16 @@ function Update-ScoopPackage {
                 Remove-Item $childTemp -Force -ErrorAction SilentlyContinue
             }
             Remove-Item $shimScript -Force -ErrorAction SilentlyContinue
-        }
-        else {
+        } else {
             # Normal Admin or User execution
             $scoopArgs = @("update", $PackageName)
             if ($Global) { $scoopArgs += "--global" }
             $argStr = $scoopArgs -join " "
-            
+
             # Resolve scoop path for reliable execution inside spin
             $scoopCmd = Get-Command scoop -ErrorAction Stop
             $scoopPath = $scoopCmd.Source
-            
+
             $runCmd = ""
             if ($scoopPath.EndsWith(".ps1")) {
                 $runCmd = "& `"$script:CurrentShell`" -NoProfile -ExecutionPolicy Bypass -File `"$scoopPath`" $argStr"
@@ -791,9 +796,9 @@ function Update-ScoopPackage {
         # "Latest version for 'app' is already installed."
         # "Updating 'app' (1.0 -> 1.1)..."
         # "Scoop was updated successfully!"
-        
+
         $isUpToDate = $output -match "Latest version" -or $output -match "is already installed" -or $output -match "is up to date"
-        
+
         # If output is empty but exit code 0, usually means up to date or no op
         if ([string]::IsNullOrWhiteSpace($output) -and $exitCode -eq 0) { $isUpToDate = $true }
 
@@ -835,7 +840,7 @@ function Invoke-ScoopUpdates {
     if (!$Packages -or $Packages.Count -eq 0) { return }
 
     $scopeStr = if ($Global) { "GLOBAL" } else { "USER" }
-    
+
     if (Get-Command gum -ErrorAction SilentlyContinue) {
         gum style --border normal --margin "1 0" --padding "0 1" --border-foreground 212 "SCOOP PACKAGES ($scopeStr)"
     } else {
@@ -875,13 +880,41 @@ function Invoke-ElevatedUpdate {
     $arguments = $managers -join " "
 
     Write-Host "`nElevating to admin for Global/System updates..." -ForegroundColor Yellow
+    Write-Host "Will process: Winget=$ProcessWinget, Choco=$ProcessChoco, ScoopGlobal=$ProcessGlobalScoop" -ForegroundColor Gray
+    Write-Host "Script path: $scriptPath" -ForegroundColor Gray
+    Write-Host "Arguments: $arguments" -ForegroundColor Gray
+    Write-Host "Current shell: $script:CurrentShell" -ForegroundColor Gray
 
     try {
-        Start-Process -FilePath $script:CurrentShell `
+        Write-Host "Starting elevated process..." -ForegroundColor Gray
+
+        $processInfo = Start-Process -FilePath $script:CurrentShell `
             -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$scriptPath`"", $arguments `
-            -Verb RunAs -Wait
-    }
-    catch {
+            -Verb RunAs -Wait -PassThru -RedirectStandardOutput "elevated_output.txt" -RedirectStandardError "elevated_error.txt"
+
+        Write-Host "Elevated process completed with exit code $($processInfo.ExitCode)" -ForegroundColor Gray
+
+        if ($processInfo.ExitCode -ne 0) {
+            Write-Host "Elevated process failed with exit code $($processInfo.ExitCode)" -ForegroundColor Red
+            $script:Summary.Failed += "elevation: admin process failed"
+
+            # Try to read error output
+            if (Test-Path "elevated_error.txt") {
+                $errorContent = Get-Content "elevated_error.txt" -ErrorAction SilentlyContinue
+                if ($errorContent) {
+                    Write-Host "Error output: $errorContent" -ForegroundColor Red
+                }
+            }
+            if (Test-Path "elevated_output.txt") {
+                $outputContent = Get-Content "elevated_output.txt" -ErrorAction SilentlyContinue
+                if ($outputContent) {
+                    Write-Host "Standard output: $outputContent" -ForegroundColor Red
+                }
+            }
+        } else {
+            Write-Host "Elevated process completed successfully" -ForegroundColor Green
+        }
+    } catch {
         Write-Host "Failed to elevate: $_" -ForegroundColor Red
         $script:Summary.Failed += "elevation: failed to run as admin"
     }
@@ -934,28 +967,34 @@ if ($Target -eq 'System') {
     $processWinget = $true
     $processChoco = $true
     $processScoop = $false
-}
-elseif ($Target -eq 'User') {
+    Write-Host "Target mode: System (Winget+Choco only)" -ForegroundColor Gray
+} elseif ($Target -eq 'User') {
     $processWinget = $false
     $processChoco = $false
     $processScoop = $true
-}
-else {
+    Write-Host "Target mode: User (Scoop only)" -ForegroundColor Gray
+} else {
     # Normal Orchestration/Sequential Mode
     $noSwitchSpecified = -not ($Scoop -or $Winget -or $Choco -or $All)
     $processAll = $All -or $noSwitchSpecified
     $processWinget = $processAll -or $Winget
     $processChoco = $processAll -or $Choco
     $processScoop = $processAll -or $Scoop
+    Write-Host "Normal mode: processAll=$processAll, Winget=$processWinget, Choco=$processChoco, Scoop=$processScoop" -ForegroundColor Gray
 }
 
 Initialize-Logging
 Write-Host "`nStarting application updates (Optimized)..." -ForegroundColor Green
 
+# Debug: Show current parameters
+Write-Host "Parameters: Scoop=$Scoop, Winget=$Winget, Choco=$Choco, All=$All, Check=$Check, Target=$Target" -ForegroundColor Gray
+
 $appList = Get-AppList
 $wingetPackages = $appList.installSource.winget.packageList
 $chocoPackages = $appList.installSource.choco.packageList
 $scoopPackages = $appList.installSource.scoop.packageList
+
+Write-Host "Package counts: Winget=$($wingetPackages.Count), Choco=$($chocoPackages.Count), Scoop=$($scoopPackages.Count)" -ForegroundColor Gray
 
 # Refresh Scoop Buckets if we are processing Scoop
 if ($processScoop) {
@@ -965,7 +1004,7 @@ if ($processScoop) {
 # --- Check / Interactive Mode ---
 if ($Check) {
     Write-Host "`n[Check Mode] Scanning for available updates..." -ForegroundColor Cyan
-    
+
     $pendingUpdates = Get-PendingUpdates `
         -WingetList $wingetPackages `
         -ChocoList $chocoPackages `
@@ -981,14 +1020,13 @@ if ($Check) {
 
     # Show GUI for selection
     Write-Host "Found $($pendingUpdates.Count) pending updates. Opening selection window..." -ForegroundColor Yellow
-    
+
     $selected = $null
 
     if (Get-Command gum -ErrorAction SilentlyContinue) {
         # Use Gum TUI if available
         $selected = Select-UpdatesWithGum -Updates $pendingUpdates
-    }
-    else {
+    } else {
         # Fallback to native GridView
         $selected = $pendingUpdates | Out-GridView -PassThru -Title "Select Updates to Install (Ctrl+Click to select multiple)"
     }
@@ -1012,8 +1050,8 @@ if ($Check) {
     # Filter the main package lists based on selection
     # We use the 'Id' property we stored in the custom object
     $selectedWingetIds = ($selected | Where-Object { $_.Manager -eq 'Winget' }).Id
-    $selectedChocoIds  = ($selected | Where-Object { $_.Manager -eq 'Choco' }).Id
-    $selectedScoopIds  = ($selected | Where-Object { $_.Manager -eq 'Scoop' }).Id
+    $selectedChocoIds = ($selected | Where-Object { $_.Manager -eq 'Choco' }).Id
+    $selectedScoopIds = ($selected | Where-Object { $_.Manager -eq 'Scoop' }).Id
 
     if ($selectedWingetIds) {
         $wingetPackages = $wingetPackages | Where-Object { $selectedWingetIds -contains $_.packageId }
@@ -1054,12 +1092,18 @@ if ($isAdmin) {
 
     # 1. Winget (Admin)
     if ($processWinget -and $appList.installSource.winget.autoInstall) {
+        Write-Host "Processing $($wingetPackages.Count) Winget packages..." -ForegroundColor Gray
         Invoke-WingetUpdates -Packages $wingetPackages
+    } else {
+        Write-Host "Skipping Winget updates (processWinget=$processWinget, autoInstall=$($appList.installSource.winget.autoInstall))" -ForegroundColor DarkGray
     }
 
     # 2. Choco (Admin)
     if ($processChoco -and $appList.installSource.choco.autoInstall) {
+        Write-Host "Processing $($chocoPackages.Count) Chocolatey packages..." -ForegroundColor Gray
         Invoke-ChocoUpdates -Packages $chocoPackages
+    } else {
+        Write-Host "Skipping Chocolatey updates (processChoco=$processChoco, autoInstall=$($appList.installSource.choco.autoInstall))" -ForegroundColor DarkGray
     }
 
     # 3. Scoop Global (Admin)
@@ -1071,8 +1115,7 @@ if ($isAdmin) {
     if ($scoopUser.Count -gt 0 -and $appList.installSource.scoop.autoInstall) {
         Invoke-ScoopUpdates -Packages $scoopUser -Global $false -DeElevate $true
     }
-}
-else {
+} else {
     Write-Host "Running as Non-Administrator" -ForegroundColor Cyan
 
     # 1. Scoop User (Direct)
@@ -1080,15 +1123,24 @@ else {
         Invoke-ScoopUpdates -Packages $scoopUser -Global $false -DeElevate $false
     }
 
-    # 2. Check for Elevation Requirements
-    $needsElevation = ($processWinget -and $appList.installSource.winget.autoInstall) -or
-                      ($processChoco -and $appList.installSource.choco.autoInstall) -or
-                      ($scoopGlobal.Count -gt 0 -and $appList.installSource.scoop.autoInstall)
+    # 2. Winget (Direct, with gsudo if available)
+    if ($processWinget -and $appList.installSource.winget.autoInstall) {
+        Invoke-WingetUpdates -Packages $wingetPackages
+    }
+
+    # 3. Check for Elevation Requirements
+    $needsElevation = ($processChoco -and $appList.installSource.choco.autoInstall) -or
+    ($scoopGlobal.Count -gt 0 -and $appList.installSource.scoop.autoInstall)
+
+    Write-Host "Elevation needed: $needsElevation (Choco=$($processChoco -and $appList.installSource.choco.autoInstall), ScoopGlobal=$($scoopGlobal.Count -gt 0 -and $appList.installSource.scoop.autoInstall))" -ForegroundColor Gray
 
     if ($needsElevation) {
-        Invoke-ElevatedUpdate -ProcessWinget ($processWinget -and $appList.installSource.winget.autoInstall) `
-                              -ProcessChoco ($processChoco -and $appList.installSource.choco.autoInstall) `
-                              -ProcessGlobalScoop ($scoopGlobal.Count -gt 0 -and $appList.installSource.scoop.autoInstall)
+        Write-Host "Elevating to process Chocolatey updates..." -ForegroundColor Yellow
+        Invoke-ElevatedUpdate -ProcessWinget $false `
+            -ProcessChoco ($processChoco -and $appList.installSource.choco.autoInstall) `
+            -ProcessGlobalScoop ($scoopGlobal.Count -gt 0 -and $appList.installSource.scoop.autoInstall)
+    } else {
+        Write-Host "No elevation needed - all required updates can run in current context" -ForegroundColor DarkGray
     }
 }
 
@@ -1106,3 +1158,65 @@ $exitCode = if ($script:Summary.Failed.Count -gt 0) { 1 } else { 0 }
 exit $exitCode
 
 #endregion
+exit $exitCode
+
+#endregion
+
+
+if ($Target) {
+    if (Get-Command gum -ErrorAction SilentlyContinue) {
+        gum confirm "Close pane?"
+    } else {
+        Read-Host "Press Enter to close pane..."
+    }
+}
+
+$exitCode = if ($script:Summary.Failed.Count -gt 0) { 1 } else { 0 }
+exit $exitCode
+
+#endregion
+exit $exitCode
+
+#endregion
+
+
+    }
+}
+
+Show-Summary
+
+if ($Target) {
+    if (Get-Command gum -ErrorAction SilentlyContinue) {
+        gum confirm "Close pane?"
+    } else {
+        Read-Host "Press Enter to close pane..."
+    }
+}
+
+$exitCode = if ($script:Summary.Failed.Count -gt 0) { 1 } else { 0 }
+exit $exitCode
+
+#endregion
+exit $exitCode
+
+#endregion
+
+
+if ($Target) {
+    if (Get-Command gum -ErrorAction SilentlyContinue) {
+        gum confirm "Close pane?"
+    } else {
+        Read-Host "Press Enter to close pane..."
+    }
+}
+
+$exitCode = if ($script:Summary.Failed.Count -gt 0) { 1 } else { 0 }
+exit $exitCode
+
+#endregion
+exit $exitCode
+
+#endregion
+
+
+

@@ -70,8 +70,8 @@ function Show-WezTermHelp {
         [PSCustomObject]@{ Shortcut = "Ctrl + Shift + K"; Description = "Close Window"; Category = "Windows"; Color = "Yellow" }
         
         # Panes - Split (1 mod key)
-        [PSCustomObject]@{ Shortcut = "Ctrl + |"; Description = "Split Vertical (Pipe = vertical line)"; Category = "Panes-Split"; Color = "Green" }
-        [PSCustomObject]@{ Shortcut = "Ctrl + \"; Description = "Split Horizontal (Backslash = horizontal line)"; Category = "Panes-Split"; Color = "Green" }
+        [PSCustomObject]@{ Shortcut = "Ctrl + Shift + |"; Description = "Split Vertical (Left/Right)"; Category = "Panes-Split"; Color = "Green" }
+        [PSCustomObject]@{ Shortcut = "Ctrl + \"; Description = "Split Horizontal (Top/Bottom)"; Category = "Panes-Split"; Color = "Green" }
         
         # Panes - Navigation (2 mod keys)
         [PSCustomObject]@{ Shortcut = "Ctrl + Shift + Arrow"; Description = "Navigate Between Panes"; Category = "Panes-Navigation"; Color = "Green" }
@@ -206,8 +206,8 @@ function Show-WTHelp {
         [PSCustomObject]@{ Shortcut = "Ctrl + Shift + 1-9"; Description = "Switch to Tab 1-9 (WT Only)"; Category = "Tabs"; Color = "Green"; Justification = $null }
         
         # Panes - Split (1 mod key)
-        [PSCustomObject]@{ Shortcut = "Ctrl + |"; Description = "Split Vertical (Pipe = vertical line)"; Category = "Panes-Split"; Color = "Green"; Justification = $null }
-        [PSCustomObject]@{ Shortcut = "Ctrl + \"; Description = "Split Horizontal (Backslash = horizontal line)"; Category = "Panes-Split"; Color = "Green"; Justification = $null }
+        [PSCustomObject]@{ Shortcut = "Ctrl + Shift + |"; Description = "Split Vertical (Left/Right)"; Category = "Panes-Split"; Color = "Green"; Justification = $null }
+        [PSCustomObject]@{ Shortcut = "Ctrl + \"; Description = "Split Horizontal (Top/Bottom)"; Category = "Panes-Split"; Color = "Green"; Justification = $null }
         [PSCustomObject]@{ Shortcut = "Ctrl + Shift + D"; Description = "Split Duplicate (Auto)"; Category = "Panes-Split"; Color = "Green"; Justification = $null }
         
         # Panes - Navigation (2 mod keys)
